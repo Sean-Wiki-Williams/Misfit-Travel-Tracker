@@ -49,6 +49,6 @@ To work around this without upgrading PythonAnywhere, a companion GitHub repo ([
 
 ## Known data quirks
 
-- Times in the feed are timezone-aware (`TZID=America/Chicago`, etc.) and are used as-is; no timezone conversion is applied for display.
+- Times in the feed are timezone-aware (`TZID=America/Chicago`, etc.). The backend preserves those timestamps, and the frontend renders flight dates/times in the viewer's local browser timezone.
 - If a leg's arrival time is earlier than its departure time, it's assumed to land the next day (overnight/red-eye legs).
 - `Rpt-` dates don't include a year, so the parser infers it from the event's own start/end dates and adjusts for rotations spanning a New Year's boundary.

@@ -246,7 +246,7 @@
       </aside>
     </main>
 
-    <footer id="footerStatus">Last updated: checking calendar... — All times local to Dad’s current location.</footer>
+    <footer id="footerStatus">Last updated: checking calendar... — Flight times shown in your local time.</footer>
   </div>
 
   <!-- Modal -->
@@ -297,6 +297,80 @@
     let mapLayers = [];
     let selectedFlight = null;
     let allFlights = [];
+    let backendData = null;
+    let todayDateKey = null;
+
+    function formatLocalDateKey(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatLocalDate(date, options) {
+      return date.toLocaleDateString('en-US', options);
+    }
+
+    function formatLocalTime(date) {
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    }
+
+    function isSameFlight(a, b) {
+      return !!(a && b && a.flight === b.flight && a.start === b.start);
+    }
+
+    function localizeFlightTimes(flight, startOfToday, endOfWindow) {
+      if (!flight || !flight.start || !flight.end) return flight;
+      const start = new Date(flight.start);
+      const end = new Date(flight.end);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return flight;
+      const startDateKey = formatLocalDateKey(start);
+
+      return {
+        ...flight,
+        date_key: startDateKey,
+        date_display: formatLocalDate(start, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
+        dep_time_formatted: formatLocalTime(start),
+        arr_time_formatted: formatLocalTime(end),
+        dep_date_formatted: formatLocalDate(start, { month: 'short', day: 'numeric' }),
+        arr_date_formatted: formatLocalDate(end, { month: 'short', day: 'numeric' }),
+        in_two_month_window: start >= startOfToday && start <= endOfWindow
+      };
+    }
+
+    function buildAvailableDates(flights) {
+      const summaryByDate = new Map();
+
+      flights.forEach(flight => {
+        if (!flight || !flight.date_key) return;
+        if (!summaryByDate.has(flight.date_key)) {
+          summaryByDate.set(flight.date_key, {
+            date_key: flight.date_key,
+            date_display: flight.date_display,
+            flight_count: 0,
+            routes: [],
+            in_two_month_window: !!flight.in_two_month_window
+          });
+        }
+
+        const dateSummary = summaryByDate.get(flight.date_key);
+        dateSummary.flight_count += 1;
+        dateSummary.routes.push(flight.route);
+        dateSummary.in_two_month_window = dateSummary.in_two_month_window || !!flight.in_two_month_window;
+      });
+
+      return Array.from(summaryByDate.values()).sort((a, b) => a.date_key.localeCompare(b.date_key));
+    }
+
+    function formatArrivalDisplay(flight) {
+      if (!flight || !flight.arr_time_formatted) return '—';
+      return flight.arr_date_formatted && flight.arr_date_formatted !== flight.dep_date_formatted
+        ? `${flight.arr_time_formatted} (${flight.arr_date_formatted})`
+        : flight.arr_time_formatted;
+    }
 
     function clearMapLayers() {
       mapLayers.forEach(layer => map.removeLayer(layer));
@@ -396,7 +470,7 @@
       document.getElementById('modalGate').textContent = `Dep: Gate ${flight.dep_gate || '—'} / Arr: Gate ${flight.arr_gate || '—'}`;
       document.getElementById('modalStatus').textContent = flight.status || 'On time';
       document.getElementById('modalSched').textContent = `${flight.dep_time_formatted} (${flight.dep_date_formatted})`;
-      document.getElementById('modalEta').textContent = flight.arr_time_formatted || '—';
+      document.getElementById('modalEta').textContent = formatArrivalDisplay(flight);
       document.getElementById('modalDuration').textContent = flight.duration ? `${flight.duration} hrs` : '—';
 
       modal.style.display = 'flex';
@@ -464,11 +538,29 @@
           return;
         }
 
-        backendData = data;
-        allFlights = data.flights;
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const twoMonthsLater = new Date(today);
+        twoMonthsLater.setDate(twoMonthsLater.getDate() + 60);
+        const endOfWindow = new Date(twoMonthsLater.getFullYear(), twoMonthsLater.getMonth(), twoMonthsLater.getDate(), 23, 59, 59, 999);
+
+        allFlights = (data.flights || []).map(flight => localizeFlightTimes(flight, startOfToday, endOfWindow));
+        backendData = {
+          ...data,
+          flights: allFlights,
+          today_date_key: formatLocalDateKey(today),
+          today_date_display: formatLocalDate(today, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
+          window_start: formatLocalDateKey(today),
+          window_end: formatLocalDateKey(twoMonthsLater),
+          window_display: `${formatLocalDate(today, { month: 'short', day: 'numeric', year: 'numeric' })} – ${formatLocalDate(twoMonthsLater, { month: 'short', day: 'numeric', year: 'numeric' })}`,
+          available_dates: buildAvailableDates(allFlights),
+          upcoming_flights: allFlights.filter(f => f.in_two_month_window)
+        };
+        backendData.upcoming_dates = backendData.available_dates.filter(d => d.in_two_month_window);
+        backendData.featured_flight = allFlights.find(f => isSameFlight(f, data.featured_flight)) || null;
 
         // Setup top-right Date Selector
-        populateDateSelector(data);
+        populateDateSelector(backendData);
 
         // Default to today's date
         applyDateFilter('today');
@@ -485,7 +577,7 @@
 
         // Update Footer
         const updatedDate = new Date();
-        document.getElementById('footerStatus').textContent = `Last updated: ${updatedDate.toLocaleTimeString()} — Synchronized with live iCal calendar feed.`;
+        document.getElementById('footerStatus').textContent = `Last updated: ${updatedDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} — Flight times shown in your local time.`;
 
       } catch (err) {
         console.error('Failed to load flight data:', err);
@@ -497,8 +589,8 @@
       const select = document.getElementById('dateSelect');
       select.innerHTML = '';
 
-      todayDateKey = data.today_date_key || new Date().toISOString().split('T')[0];
-      const todayDisplay = data.today_date_display || new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      todayDateKey = data.today_date_key || formatLocalDateKey(new Date());
+      const todayDisplay = data.today_date_display || formatLocalDate(new Date(), { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
       const windowDisplay = data.window_display || 'Next 2 Months';
 
       // 1. Today option
@@ -682,7 +774,7 @@
             <td><strong>${f.flight}</strong></td>
             <td>${f.origin.code} → ${f.dest.code}</td>
             <td>${f.dep_time_formatted} <small style="color:#888">${f.dep_date_formatted}</small></td>
-            <td>${f.arr_time_formatted}</td>
+            <td>${f.arr_time_formatted}${f.arr_date_formatted !== f.dep_date_formatted ? ` <small style="color:#888">${f.arr_date_formatted}</small>` : ''}</td>
             <td class="status">${f.status}</td>
           `;
 
