@@ -1,4 +1,4 @@
-># Dad's Flight Tracker
+># Daily Flight Tracker
 
 A Django web app that shows signed-in users their flight schedules by parsing their individual iCal/CalDAV feeds. User accounts, schedules, and individual flight records are stored in a database, with each flight belonging to one user.
 
@@ -12,24 +12,133 @@ A Django web app that shows signed-in users their flight schedules by parsing th
 
 ## Local development
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+These steps are for Windows and Command Prompt. To open Command Prompt, press the Windows key, type `cmd`, and press Enter. You only need to do the setup steps once per computer (and again if you delete the `.venv` folder).
+
+### 1. Install Python
+
+Install a current version of Python 3 from [python.org](https://www.python.org/downloads/windows/). During installation, select **Add python.exe to PATH** if the installer offers that option.
+
+Open Command Prompt and check that the Python launcher is available:
+
+```bat
+py --version
+```
+
+If Command Prompt says that `py` is not recognized, finish or repair the Python installation, then close and reopen Command Prompt.
+
+### 2. Download the project from GitHub
+
+1. Open the repository in your browser: <https://github.com/Sean-Wiki-Williams/PilotScheduler>.
+2. Select the green **Code** button, then **Download ZIP**.
+3. Open your Downloads folder, right-click the ZIP file, and choose **Extract All...**.
+4. Move the extracted `PilotScheduler` folder somewhere easy to find, such as your Documents folder.
+
+### 3. Open the project folder
+
+In Command Prompt, change to the folder you downloaded. You can also right click in that folder on windows and select open in terminal.
+
+```bat
+cd /d "%USERPROFILE%\Documents\PilotScheduler"
+```
+
+Adjust the path if you saved the project somewhere else. If you extracted a ZIP, the folder you need is the one that directly contains `manage.py` and `requirements.txt`; it may be nested inside another folder with the same name. You can check with:
+
+```bat
+dir manage.py requirements.txt
+```
+
+### 4. Create and activate a virtual environment
+
+A virtual environment keeps this project's Python packages separate from other projects. Create it once:
+
+```bat
+py -m venv .venv
+```
+
+Activate it whenever you open a new Command Prompt window to work on this project:
+
+```bat
+.venv\Scripts\activate.bat
+```
+
+When activation succeeds, the prompt starts with `(.venv)`.
+
+### 5. Install the project packages
+
+With the virtual environment activated, install the packages the project needs:
+
+```bat
+python -m pip install -r requirements.txt
+```
+
+### 6. Configure SkyLink lookup
+
+Drop the `.env` file the admin emails you into the project folder (the folder containing `manage.py`). Do not share this file with anyone or upload it to any shared drives.
+
+### 7. Create the local database tables
+
+Run the database migrations:
+
+```bat
 python manage.py migrate
+```
+
+The development database uses SQLite by default. You do not need to create a database yourself; Django creates `db.sqlite3` and its tables when you run the migrations.
+
+### 8. Start the development server
+
+Start the server from the project folder, with the virtual environment activated:
+
+```bat
 python manage.py runserver
 ```
 
-The local development database defaults to SQLite in `db.sqlite3`; `python manage.py migrate` creates its tables. Create an account at `/register/`. For local SkyLink lookup, copy `.env.example` to `.env` and enter your rotated direct-subscription key in that local file:
+Keep this Command Prompt window open while using the app, and visit <http://127.0.0.1:8000/> in your internet browser. Stop the server by pressing **Ctrl+C** in Command Prompt. To start it again later, open Command Prompt, change to the project folder, activate `.venv`, and run the command above. Create an account at <http://127.0.0.1:8000/register/>.
 
-```powershell
-Copy-Item .env.example .env
-# Edit .env and set SKYLINK_API_KEY to your rotated key.
+If the project is updated and reports missing database tables, run `python manage.py migrate` again before starting the server.
+
+### Access the site from other devices on your network
+
+By default the site is only reachable from the computer running it. To let phones and other computers on the same home network open it:
+
+1. On the host computer, find its local IP address:
+
+   ```bat
+   ipconfig
+   ```
+
+   Look for the **IPv4 Address** of your active adapter, for example `192.168.1.50`.
+
+2. Allow that address by adding this line to the `.env` file in the project folder, using your own IP and keeping the localhost entries:
+
+   ```
+   ALLOWED_HOSTS=localhost,127.0.0.1,[::1],192.168.1.50
+   ```
+
+   Do not set `DEBUG=0` for this; with it off, login and form cookies require HTTPS and will not work over plain `http://`.
+
+3. Start the server so it listens on the network instead of only on the local computer:
+
+   ```bat
+   python manage.py runserver 0.0.0.0:8000
+   ```
+
+   The first time you run it, Windows may ask to allow Python through the firewall. Allow it on **Private** networks. If no prompt appears, add an inbound Windows Firewall rule for TCP port 8000.
+
+4. On another device connected to the same network, open `http://192.168.1.50:8000/` (using your own IP).
+
+The host computer must stay on with the server window open. Your router may assign the computer a new IP address after a restart; reserve a fixed IP for it in your router settings if that happens, and update `ALLOWED_HOSTS` if the address changes. `runserver` is for development only: keep it on your home network and do not port-forward it to the internet. For internet access, follow the Deployment section below.
+
+### Quick start after initial setup
+
+For later sessions, open Command Prompt in the project folder (the folder containing `manage.py`), then run:
+
+```bat
+.venv\Scripts\activate.bat
 python manage.py runserver
 ```
 
-The real `.env` is ignored by Git; never put the key in source code, browser JavaScript, or a committed settings file. Existing process environment variables take precedence over `.env`. For production, set the key as a server-side environment variable alongside a unique `SECRET_KEY`, `DEBUG=0`, `ALLOWED_HOSTS`, and `DATABASE_URL` to a PostgreSQL URL. Set `SECURE_SSL_REDIRECT=1` and secure cookies when the app is behind HTTPS.
-
-The Django database starts empty; existing records in the old Flask database are not automatically migrated.
+The Django database starts empty.
 
 `ICAL_ALLOWED_HOSTS` is a comma-separated allowlist for iCal provider domains. It defaults to iCloud domains; feed URLs must use HTTPS (or `webcal://`, which is upgraded to HTTPS), and redirects must stay within the allowlist.
 
