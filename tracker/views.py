@@ -25,6 +25,7 @@ from .forms import (
     RegistrationForm,
 )
 from .models import Flight, ScheduleCache
+from .adsb import AdsbLookupError, fetch_callsign_states, normalize_callsign, states_contain_callsign
 from .opensky import OpenSkyRequestError, fetch_states, parse_bounding_box
 from .services import persist_schedule, schedule_is_fresh
 from .skylink import SkyLinkLookupError, lookup_flight as skylink_lookup_flight
@@ -202,14 +203,36 @@ def lookup_flight(request):
 def opensky_states(request):
     try:
         bounds = parse_bounding_box(request.GET)
-        result = fetch_states(bounds)
+        callsign = normalize_callsign(request.GET.get("callsign"))
     except OpenSkyRequestError as error:
+        return JsonResponse({"error": str(error)}, status=error.status_code)
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+
+    result = None
+    opensky_error = None
+    try:
+        result = fetch_states(bounds)
+        result["source"] = "opensky"
+    except OpenSkyRequestError as error:
+        opensky_error = error
         logger.warning(
             "OpenSky lookup failed for user %s (HTTP %s)",
             request.user.pk,
             error.status_code,
         )
-        return JsonResponse({"error": str(error)}, status=error.status_code)
+
+    if callsign and (result is None or not states_contain_callsign(result["states"], callsign)):
+        try:
+            fallback = fetch_callsign_states(callsign)
+        except AdsbLookupError as error:
+            logger.warning("adsb.lol lookup failed for user %s: %s", request.user.pk, error)
+        else:
+            if fallback["states"] or result is None:
+                result = {**fallback, "source": "adsb.lol"}
+
+    if result is None:
+        return JsonResponse({"error": str(opensky_error)}, status=opensky_error.status_code)
     return JsonResponse(result)
 
 

@@ -369,7 +369,8 @@
           lamin: String(Math.max(-90, lamin)),
           lomin: String(Math.max(-180, lomin)),
           lamax: String(Math.min(90, lamax)),
-          lomax: String(Math.min(180, lomax))
+          lomax: String(Math.min(180, lomax)),
+          callsign
         });
         const url = `/api/opensky/states/?${params}`;
         const res = await fetch(url);
@@ -385,9 +386,9 @@
         const [, , , , , lon, lat, , onGround, , track] = match;
         if (lat == null || lon == null) return null;
 
-        return { lat, lon, track, onGround: !!onGround };
+        return { lat, lon, track, onGround: !!onGround, source: data.source === 'adsb.lol' ? 'adsb.lol' : 'OpenSky' };
       } catch (err) {
-        console.warn('OpenSky lookup failed, falling back to estimated position:', err);
+        console.warn('Live ADS-B lookup failed, falling back to estimated position:', err);
         return null;
       }
     }
@@ -504,7 +505,7 @@
       mapLayers.push(aircraftMarker);
 
       const trackingNote = livePos
-        ? ' (live ADS-B position via OpenSky)'
+        ? ` (live ADS-B position via ${livePos.source})`
         : flight.status === 'In air'
           ? ' (estimated position; live ADS-B unavailable)'
           : '';

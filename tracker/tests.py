@@ -370,6 +370,83 @@ class UserScheduleTests(TestCase):
         self.assertEqual(response.status_code, 400)
         get.assert_not_called()
 
+    def route_requests(self, opensky_response, adsb_response):
+        calls = []
+
+        def fake_get(url, *args, **kwargs):
+            calls.append(url)
+            return adsb_response if "adsb.lol" in url else opensky_response
+
+        return fake_get, calls
+
+    def test_opensky_failure_falls_back_to_adsb_lol_for_callsign(self):
+        self.create_user("adsb-fallback@example.com")
+        opensky_response = Mock(status_code=429, ok=False)
+        adsb_response = Mock(status_code=200, ok=True)
+        adsb_response.json.return_value = {"ac": [{
+            "hex": "a7f684", "flight": "DAL653  ", "lat": 33.8, "lon": -85.5,
+            "alt_baro": 24250, "gs": 400, "track": 273.1,
+        }]}
+        fake_get, calls = self.route_requests(opensky_response, adsb_response)
+
+        with patch("requests.get", side_effect=fake_get):
+            response = self.client.get(reverse("opensky_states"), {
+                "lamin": "25", "lomin": "-90", "lamax": "50", "lomax": "-60",
+                "callsign": "dal653",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["source"], "adsb.lol")
+        state = data["states"][0]
+        self.assertEqual((state[1], state[5], state[6], state[10]), ("DAL653", -85.5, 33.8, 273.1))
+        self.assertTrue(calls[-1].endswith("/DAL653"))
+
+    def test_adsb_lol_not_used_when_opensky_has_the_callsign(self):
+        self.create_user("adsb-unused@example.com")
+        opensky_response = Mock(status_code=200, ok=True)
+        opensky_response.json.return_value = {
+            "time": 1,
+            "states": [["abc123", "DAL653", "US", 1, 1, -85.0, 34.0, 1.0, False, 1.0, 75.0]],
+        }
+        fake_get, calls = self.route_requests(opensky_response, Mock())
+
+        with patch("requests.get", side_effect=fake_get):
+            response = self.client.get(reverse("opensky_states"), {
+                "lamin": "25", "lomin": "-90", "lamax": "50", "lomax": "-60",
+                "callsign": "DAL653",
+            })
+
+        self.assertEqual(response.json()["source"], "opensky")
+        self.assertFalse(any("adsb.lol" in url for url in calls))
+
+    def test_opensky_error_returned_when_adsb_lol_also_fails(self):
+        self.create_user("adsb-both-fail@example.com")
+        fake_get, _ = self.route_requests(
+            Mock(status_code=429, ok=False),
+            Mock(status_code=500, ok=False),
+        )
+
+        with patch("requests.get", side_effect=fake_get):
+            response = self.client.get(reverse("opensky_states"), {
+                "lamin": "25", "lomin": "-90", "lamax": "50", "lomax": "-60",
+                "callsign": "DAL653",
+            })
+
+        self.assertEqual(response.status_code, 429)
+
+    def test_opensky_states_proxy_rejects_invalid_callsign(self):
+        self.create_user("adsb-invalid@example.com")
+
+        with patch("requests.get") as get:
+            response = self.client.get(reverse("opensky_states"), {
+                "lamin": "25", "lomin": "-90", "lamax": "50", "lomax": "-60",
+                "callsign": "../etc",
+            })
+
+        self.assertEqual(response.status_code, 400)
+        get.assert_not_called()
+
     def test_opensky_states_proxy_requires_authentication(self):
         response = self.client.get(reverse("opensky_states"), {
             "lamin": "25",
