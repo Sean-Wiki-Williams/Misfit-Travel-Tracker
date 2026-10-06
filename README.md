@@ -221,6 +221,62 @@ Key response fields:
 
 Deploy to a host that provides PostgreSQL and allows outbound HTTPS requests to the calendar provider domains in `ICAL_ALLOWED_HOSTS`. Configure `DATABASE_URL`, `SECRET_KEY`, `DEBUG=0`, `ALLOWED_HOSTS`, and HTTPS settings in the host's environment, install `requirements.txt`, run `python manage.py migrate`, and start `config.wsgi:application` with a production WSGI server.
 
+### PythonAnywhere (SeanWilliams3.pythonanywhere.com)
+
+1. In a PythonAnywhere **Bash** console, clone the project and create a virtualenv (use the same Python version, 3.12, for the web app):
+
+   ```bash
+   git clone https://github.com/Sean-Wiki-Williams/PilotScheduler.git
+   mkvirtualenv pilotscheduler --python=python3.12
+   cd ~/PilotScheduler
+   pip install -r requirements.txt
+   ```
+
+2. Create `~/PilotScheduler/.env` (for example with `nano .env`):
+
+   ```
+   DEBUG=0
+   SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_urlsafe(50))">
+   ALLOWED_HOSTS=seanwilliams3.pythonanywhere.com
+   SECURE_SSL_REDIRECT=1
+   USE_X_FORWARDED_PROTO=1
+   SKYLINK_API_KEY=<your key>
+   ```
+
+   Leave `DATABASE_URL` unset to use SQLite (`db.sqlite3`), or set it to a PostgreSQL URL on a paid plan.
+
+3. Create the database and collect static files:
+
+   ```bash
+   python manage.py migrate
+   python manage.py collectstatic --noinput
+   ```
+
+4. On the **Web** tab, choose **Add a new web app → Manual configuration**, pick Python 3.12, and set:
+   - **Source code** and **Working directory:** `/home/SeanWilliams3/PilotScheduler`
+   - **Virtualenv:** `/home/SeanWilliams3/.virtualenvs/pilotscheduler`
+   - **Static files:** URL `/static/` → directory `/home/SeanWilliams3/PilotScheduler/staticfiles`
+
+5. Click the **WSGI configuration file** link and replace its contents with:
+
+   ```python
+   import os
+   import sys
+
+   path = "/home/SeanWilliams3/PilotScheduler"
+   if path not in sys.path:
+       sys.path.insert(0, path)
+
+   os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
+
+   from django.core.wsgi import get_wsgi_application
+   application = get_wsgi_application()
+   ```
+
+6. Click **Reload**, then open <https://seanwilliams3.pythonanywhere.com/register/> and create an account. Errors appear in the error log linked on the Web tab.
+
+To update later: `cd ~/PilotScheduler && git pull`, run `python manage.py migrate` and `python manage.py collectstatic --noinput` if needed, then click **Reload**. `USE_X_FORWARDED_PROTO=1` makes Django trust PythonAnywhere's proxy header so HTTPS redirects do not loop; only enable it behind a proxy that sets that header. Free accounts can only make outbound requests to allowlisted sites, so calendar feed, SkyLink, and OpenSky calls may fail until those domains are allowed or you upgrade. Free web apps must also be renewed periodically from the Web tab.
+
 The old GitHub Actions relay and current `flight_calendar.ics` file have been removed from this source tree. Push those removals before deploying private user calendars. Removing the file from the latest commit does not erase copies in Git history; rotate the calendar feed URL if it was exposed.
 
 The old shared-feed relay cannot safely serve as a multi-user replacement because it publishes a single feed. The nested `PilotScheduler/site/` app is an older Flask copy and is not the Django application.
