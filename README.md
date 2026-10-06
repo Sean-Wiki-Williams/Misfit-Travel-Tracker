@@ -12,7 +12,7 @@ A Django web app that shows signed-in users their flight schedules by parsing th
 
 ## Local development
 
-These steps are for Windows and Command Prompt. To open Command Prompt, press the Windows key, type `cmd`, and press Enter. You only need to do the setup steps once per computer (and again if you delete the `.venv` folder).
+These steps are for Windows and Command Prompt. On a Mac, see [Local development on a Mac](#local-development-on-a-mac). To open Command Prompt, press the Windows key, type `cmd`, and press Enter. You only need to do the setup steps once per computer (and again if you delete the `.venv` folder).
 
 ### 1. Install Python
 
@@ -141,6 +141,62 @@ python manage.py runserver
 The Django database starts empty.
 
 `ICAL_ALLOWED_HOSTS` is a comma-separated allowlist for iCal provider domains. It defaults to iCloud domains; feed URLs must use HTTPS (or `webcal://`, which is upgraded to HTTPS), and redirects must stay within the allowlist.
+
+## Local development on a Mac
+
+The steps are the same as the Windows steps above, except for the commands below. Use the Terminal app (press Cmd+Space, type `Terminal`, and press Return).
+
+1. **Install Python.** Install Python 3 from [python.org](https://www.python.org/downloads/macos/) (or run `brew install python` if you use Homebrew), then check it:
+
+   ```bash
+   python3 --version
+   ```
+
+2. **Download the project.** For the ZIP option, double-click the downloaded ZIP to extract it. For the Git option, run `git --version`; if Git is missing, macOS offers to install the Command Line Tools. Then:
+
+   ```bash
+   cd ~/Documents
+   git clone https://github.com/Sean-Wiki-Williams/PilotScheduler.git
+   ```
+
+3. **Open the project folder** and check that you are in the right place:
+
+   ```bash
+   cd ~/Documents/PilotScheduler
+   ls manage.py requirements.txt
+   ```
+
+4. **Create and activate a virtual environment:**
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+   The prompt starts with `(.venv)` when activation succeeds. Activate it again with the second command whenever you open a new Terminal window.
+
+5. **Install the packages:**
+
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+
+6. **Add the `.env` file** the admin emails you to the project folder. Files starting with a dot are hidden in Finder; press Cmd+Shift+. to show them. If your mail app saves the file as `env` or `env.txt`, rename it in Terminal (adjust the path to where it was saved):
+
+   ```bash
+   mv ~/Downloads/env ~/Documents/PilotScheduler/.env
+   ```
+
+7. **Create the database tables and start the server:**
+
+   ```bash
+   python manage.py migrate
+   python manage.py runserver
+   ```
+
+   Then visit <http://127.0.0.1:8000/>. Stop the server with **Ctrl+C**. For later sessions, run `cd ~/Documents/PilotScheduler`, `source .venv/bin/activate`, and `python manage.py runserver`.
+
+To reach the site from other devices on your network, follow the network access steps above with these changes: find the IP address with `ipconfig getifaddr en0` (Wi-Fi; try `en1` if it prints nothing, or check System Settings > Network), and click **Allow** if macOS asks whether Python can accept incoming connections.
 
 ## API
 
