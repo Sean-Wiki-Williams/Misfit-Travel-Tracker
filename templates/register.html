@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account — Dad's Flight Tracker</title>
+  <style>
+    body{margin:0;background:#f2f5f8;color:#1a1a1a;font:16px system-ui,sans-serif}
+    main{max-width:420px;margin:10vh auto;padding:28px;background:#fff;border-radius:12px;box-shadow:0 8px 24px #002b5c18}
+    h1{margin-top:0;color:#002b5c;font-size:24px}
+    label{display:block;margin:16px 0 6px;font-weight:600}
+    input{box-sizing:border-box;width:100%;padding:11px;border:1px solid #aab4bf;border-radius:6px;font:inherit}
+    button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:6px;background:#002b5c;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+    a{color:#002b5c}
+    .errors{padding:10px;border-radius:6px;background:#fff0f0;color:#8a1020}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Create your account</h1>
+    <p>Your email identifies your account; your schedule is visible only after signing in.</p>
+    {% if form.non_field_errors %}<div class="errors">{{ form.non_field_errors }}</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ form.email.value|default:'' }}" autocomplete="email" maxlength="320" required>
+      {% for error in form.email.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+      <label for="password">Password</label>
+      <input id="password" name="password1" type="password" autocomplete="new-password" minlength="12" required>
+      {% for error in form.password1.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+      <label for="password_confirmation">Confirm password</label>
+      <input id="password_confirmation" name="password2" type="password" autocomplete="new-password" minlength="12" required>
+      {% for error in form.password2.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+      <button type="submit">Create account</button>
+    </form>
+    <p>Already registered? <a href="{% url 'login' %}">Sign in</a>.</p>
+  </main>
+</body>
+</html>

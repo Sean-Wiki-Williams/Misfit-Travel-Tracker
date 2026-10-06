@@ -1,100 +1,23 @@
 import os
 import re
 import math
-import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
-import urllib.request
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
-from flask import Flask, jsonify, request, send_from_directory
+import requests
+
 import icalendar
-from dateutil import parser as date_parser
+import airportsdata
 
-app = Flask(__name__, static_folder=".", static_url_path="")
-
-# On PythonAnywhere's free tier, direct outbound requests to icloud.com are blocked
-# by their proxy whitelist, so we relay through a GitHub Actions job that syncs the
-# feed into flight_calendar.ics on this repo and we read it via raw.githubusercontent.com.
-DEFAULT_ICAL_URL = os.environ.get(
-    "ICAL_URL",
-    "https://raw.githubusercontent.com/Sean-Wiki-Williams/PilotScheduler/main/flight_calendar.ics",
+ICAL_ALLOWED_HOSTS = tuple(
+    host.strip().lower()
+    for host in os.environ.get("ICAL_ALLOWED_HOSTS", "icloud.com,icloud-content.com").split(",")
+    if host.strip()
 )
-
-AIRPORT_DB: Dict[str, Dict[str, Any]] = {
-    "ATL": {"name": "Hartsfield–Jackson Atlanta International Airport", "city": "Atlanta, GA", "lat": 33.6407, "lon": -84.4277},
-    "SAP": {"name": "Ramón Villeda Morales International Airport", "city": "San Pedro Sula, Honduras", "lat": 15.4528, "lon": -87.9238},
-    "MCI": {"name": "Kansas City International Airport", "city": "Kansas City, MO", "lat": 39.2976, "lon": -94.7139},
-    "SMF": {"name": "Sacramento International Airport", "city": "Sacramento, CA", "lat": 38.6954, "lon": -121.5908},
-    "BNA": {"name": "Nashville International Airport", "city": "Nashville, TN", "lat": 36.1245, "lon": -86.6782},
-    "LAX": {"name": "Los Angeles International Airport", "city": "Los Angeles, CA", "lat": 33.9416, "lon": -118.4085},
-    "SEA": {"name": "Seattle-Tacoma International Airport", "city": "Seattle, WA", "lat": 47.4502, "lon": -122.3088},
-    "MEX": {"name": "Mexico City International Airport", "city": "Mexico City, Mexico", "lat": 19.4361, "lon": -99.0719},
-    "RSW": {"name": "Southwest Florida International Airport", "city": "Fort Myers, FL", "lat": 26.5362, "lon": -81.7552},
-    "COS": {"name": "Colorado Springs Airport", "city": "Colorado Springs, CO", "lat": 38.8058, "lon": -104.7008},
-    "JFK": {"name": "John F. Kennedy International Airport", "city": "New York, NY", "lat": 40.6413, "lon": -73.7781},
-    "LGA": {"name": "LaGuardia Airport", "city": "New York, NY", "lat": 40.7769, "lon": -73.8740},
-    "EWR": {"name": "Newark Liberty International Airport", "city": "Newark, NJ", "lat": 40.6895, "lon": -74.1745},
-    "ORD": {"name": "O'Hare International Airport", "city": "Chicago, IL", "lat": 41.9742, "lon": -87.9073},
-    "MDW": {"name": "Chicago Midway International Airport", "city": "Chicago, IL", "lat": 41.7868, "lon": -87.7522},
-    "DFW": {"name": "Dallas/Fort Worth International Airport", "city": "Dallas, TX", "lat": 32.8998, "lon": -97.0403},
-    "DEN": {"name": "Denver International Airport", "city": "Denver, CO", "lat": 39.8561, "lon": -104.6737},
-    "SFO": {"name": "San Francisco International Airport", "city": "San Francisco, CA", "lat": 37.6213, "lon": -122.3790},
-    "BOS": {"name": "Boston Logan International Airport", "city": "Boston, MA", "lat": 42.3656, "lon": -71.0096},
-    "MIA": {"name": "Miami International Airport", "city": "Miami, FL", "lat": 25.7959, "lon": -80.2870},
-    "MCO": {"name": "Orlando International Airport", "city": "Orlando, FL", "lat": 28.4312, "lon": -81.3081},
-    "LAS": {"name": "Harry Reid International Airport", "city": "Las Vegas, NV", "lat": 36.0840, "lon": -115.1537},
-    "PHX": {"name": "Phoenix Sky Harbor International Airport", "city": "Phoenix, AZ", "lat": 33.4373, "lon": -112.0078},
-    "IAH": {"name": "George Bush Intercontinental Airport", "city": "Houston, TX", "lat": 29.9902, "lon": -95.3368},
-    "CLT": {"name": "Charlotte Douglas International Airport", "city": "Charlotte, NC", "lat": 35.2144, "lon": -80.9473},
-    "DTW": {"name": "Detroit Metropolitan Wayne County Airport", "city": "Detroit, MI", "lat": 42.2162, "lon": -83.3554},
-    "MSP": {"name": "Minneapolis-Saint Paul International Airport", "city": "Minneapolis, MN", "lat": 44.8848, "lon": -93.2223},
-    "SLC": {"name": "Salt Lake City International Airport", "city": "Salt Lake City, UT", "lat": 40.7899, "lon": -111.9791},
-    "SAN": {"name": "San Diego International Airport", "city": "San Diego, CA", "lat": 32.7338, "lon": -117.1933},
-    "TPA": {"name": "Tampa International Airport", "city": "Tampa, FL", "lat": 27.9772, "lon": -82.5311},
-    "PDX": {"name": "Portland International Airport", "city": "Portland, OR", "lat": 45.5898, "lon": -122.5951},
-    "STL": {"name": "St. Louis Lambert International Airport", "city": "St. Louis, MO", "lat": 38.7472, "lon": -90.3599},
-    "CVG": {"name": "Cincinnati/Northern Kentucky International Airport", "city": "Cincinnati, OH", "lat": 29.0488, "lon": -84.6678},
-    "RDU": {"name": "Raleigh-Durham International Airport", "city": "Raleigh, NC", "lat": 35.8801, "lon": -78.7880},
-    "AUS": {"name": "Austin-Bergstrom International Airport", "city": "Austin, TX", "lat": 30.1975, "lon": -97.6664},
-    "IND": {"name": "Indianapolis International Airport", "city": "Indianapolis, IN", "lat": 39.7173, "lon": -86.2944},
-    "CMH": {"name": "John Glenn Columbus International Airport", "city": "Columbus, OH", "lat": 39.9980, "lon": -82.8919},
-    "PIT": {"name": "Pittsburgh International Airport", "city": "Pittsburgh, PA", "lat": 40.4915, "lon": -80.2329},
-    "JAX": {"name": "Jacksonville International Airport", "city": "Jacksonville, FL", "lat": 30.4941, "lon": -81.6879},
-    "MSY": {"name": "Louis Armstrong New Orleans International Airport", "city": "New Orleans, LA", "lat": 29.9911, "lon": -90.2580},
-    "SAT": {"name": "San Antonio International Airport", "city": "San Antonio, TX", "lat": 29.5337, "lon": -98.4698},
-    "DAL": {"name": "Dallas Love Field", "city": "Dallas, TX", "lat": 32.8481, "lon": -96.8512},
-    "HOU": {"name": "William P. Hobby Airport", "city": "Houston, TX", "lat": 29.6454, "lon": -95.2789},
-}
-
-AIRCRAFT_MODELS: Dict[str, str] = {
-    "739": "Boeing 737-900ER",
-    "73N": "Boeing 737-900ER",
-    "73J": "Boeing 737-900",
-    "73R": "Boeing 737-800",
-    "738": "Boeing 737-800",
-    "73H": "Boeing 737-800",
-    "757": "Boeing 757-200",
-    "752": "Boeing 757-200",
-    "753": "Boeing 757-300",
-    "767": "Boeing 767-300ER",
-    "763": "Boeing 767-300ER",
-    "764": "Boeing 767-400ER",
-    "321": "Airbus A321-200",
-    "32B": "Airbus A321neo",
-    "32Q": "Airbus A321neo",
-    "320": "Airbus A320-200",
-    "319": "Airbus A319",
-    "221": "Airbus A220-100",
-    "223": "Airbus A220-300",
-    "332": "Airbus A330-200",
-    "333": "Airbus A330-300",
-    "339": "Airbus A330-900neo",
-    "359": "Airbus A350-900",
-}
-
-# Cache for iCal data to avoid rate limits
-_cache: Dict[str, Any] = {"data": None, "timestamp": 0}
-CACHE_TTL_SECONDS = 60
+MAX_ICAL_BYTES = 10 * 1024 * 1024
+# Offline worldwide airport database
+AIRPORTS = airportsdata.load("IATA")
 
 MONTH_ABBR: Dict[str, int] = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -106,13 +29,10 @@ LEG_RE = re.compile(r"^(?:([ID])\s+)?([A-Z]{2}\d{2,4})\s+([A-Z]{3})-([A-Z]{3})\s
 LAYOVER_RE = re.compile(r"^LAYOVER\s+[\d:]+/([A-Z]{3})$")
 HOTEL_RE = re.compile(r"^([^:]+):\s*([\d\-\+\(\)\s]+)$")
 
+#----------------------------------------------------------------------------------------------------------------------------------
 
 def parse_rotation_legs(description: str, event_start: Optional[datetime], event_end: Optional[datetime]) -> List[Dict[str, Any]]:
     """Extract individual flight legs from a multi-day rotation report DESCRIPTION block.
-
-    Real MyCrew/PilotScheduler exports bundle several days of flight legs (each preceded
-    by a "Rpt- HHMM DDMMM" report-time marker) inside a single VEVENT's description,
-    rather than one VEVENT per flight leg.
     """
     legs: List[Dict[str, Any]] = []
     if not description or not event_start:
@@ -183,6 +103,7 @@ def parse_rotation_legs(description: str, event_start: Optional[datetime], event
 
     return legs
 
+#----------------------------------------------------------------------------------------------------------------------------------
 
 def build_flight_entry(
     flight_num: str,
@@ -201,7 +122,6 @@ def build_flight_entry(
 ) -> Dict[str, Any]:
     origin_info = get_airport_info(origin_code)
     dest_info = get_airport_info(dest_code)
-    aircraft_name = AIRCRAFT_MODELS.get(eqp_code, f"Boeing {eqp_code}")
 
     if now < start_dt:
         diff_hours = (start_dt - now).total_seconds() / 3600.0
@@ -222,7 +142,7 @@ def build_flight_entry(
         "duration": duration,
         "equipment": eqp_code,
         "ship": ship_code,
-        "aircraft": f"Delta {eqp_code} — {aircraft_name}",
+        "aircraft": f"Delta {eqp_code}",
         "tail": f"N{ship_code}DN" if ship_code else "N8XXDN",
         "start": start_dt.isoformat(),
         "end": end_dt.isoformat(),
@@ -235,18 +155,54 @@ def build_flight_entry(
         "layover": layover,
     }
 
+#----------------------------------------------------------------------------------------------------------------------------------
+def normalize_ical_url(url: str) -> str:
+    url = url.strip()
+    if url.lower().startswith("webcal://"):
+        url = "https://" + url[len("webcal://"):]
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme.lower() != "https"
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or parsed.port not in (None, 443)
+        or not any(host == allowed or host.endswith("." + allowed) for allowed in ICAL_ALLOWED_HOSTS)
+    ):
+        raise ValueError("Use an HTTPS calendar URL from an allowed calendar provider.")
+    return urlunsplit(("https", parsed.netloc, parsed.path, parsed.query, ""))
+
 
 def fetch_ical_content(url: str) -> bytes:
-    if url.startswith("webcal://"):
-        url = "https://" + url[9:]
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) DadTravelTracker/1.0"},
-    )
-    with urllib.request.urlopen(req, timeout=12) as resp:
-        return resp.read()
+    current_url = normalize_ical_url(url)
+    headers = {
+        "User-Agent": "Mozilla/5.0 DadTravelTracker/1.0",
+        "Accept": "text/calendar, application/octet-stream;q=0.9, */*;q=0.1",
+    }
+    for _ in range(4):
+        current_url = normalize_ical_url(current_url)
+        response = requests.get(current_url, headers=headers, timeout=(5, 12), stream=True, allow_redirects=False)
+        try:
+            if response.is_redirect or response.is_permanent_redirect:
+                location = response.headers.get("Location")
+                if not location:
+                    raise ValueError("Calendar provider returned a redirect without a destination.")
+                current_url = urljoin(current_url, location)
+                continue
+            response.raise_for_status()
+            content = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                content.extend(chunk)
+                if len(content) > MAX_ICAL_BYTES:
+                    raise ValueError("Calendar feed exceeds the 10 MB size limit.")
+            return bytes(content)
+        finally:
+            response.close()
+    raise ValueError("Calendar provider redirected too many times.")
 
-
+#----------------------------------------------------------------------------------------------------------------------------------
 def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
@@ -256,16 +212,28 @@ def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> flo
     bearing = math.degrees(math.atan2(y, x))
     return (bearing + 360) % 360
 
-
+#----------------------------------------------------------------------------------------------------------------------------------
 def get_airport_info(code: str) -> Dict[str, Any]:
     code = code.strip().upper()
-    if code in AIRPORT_DB:
+    ap = AIRPORTS.get(code)
+    if ap:
+        city = ap.get("city") or code
+        country = ap.get("country") or ""
+        subd = ap.get("subd") or ""
+        if country == "US" and subd:
+            city_display = f"{city}, {subd}"
+        elif subd and country:
+            city_display = f"{city}, {subd}, {country}"
+        elif country:
+            city_display = f"{city}, {country}"
+        else:
+            city_display = city
         return {
             "code": code,
-            "name": AIRPORT_DB[code]["name"],
-            "city": AIRPORT_DB[code]["city"],
-            "lat": AIRPORT_DB[code]["lat"],
-            "lon": AIRPORT_DB[code]["lon"],
+            "name": ap.get("name") or f"{code} Airport",
+            "city": city_display,
+            "lat": ap.get("lat", 0.0),
+            "lon": ap.get("lon", 0.0),
         }
     return {
         "code": code,
@@ -275,7 +243,7 @@ def get_airport_info(code: str) -> Dict[str, Any]:
         "lon": 0.0,
     }
 
-
+#----------------------------------------------------------------------------------------------------------------------------------
 def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
     cal = icalendar.Calendar.from_ical(raw_ical_bytes)
     now = datetime.now(timezone.utc)
@@ -334,16 +302,16 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
             ship_code = eqp_m.group(2) if eqp_m else ""
 
             if start_dt and end_dt:
-                flights.append(
-                    build_flight_entry(
-                        flight_num, prefix, origin_code, dest_code, start_dt, end_dt,
-                        eqp_code, now, ship_code=ship_code,
-                        dep_gate=dep_gate_m.group(1) if dep_gate_m else "—",
-                        arr_gate=arr_gate_m.group(1) if arr_gate_m else "—",
-                        duration=blk_m.group(1) if blk_m else "—",
-                        layover=layover,
-                    )
+                entry = build_flight_entry(
+                    flight_num, prefix, origin_code, dest_code, start_dt, end_dt,
+                    eqp_code, now, ship_code=ship_code,
+                    dep_gate=dep_gate_m.group(1) if dep_gate_m else "—",
+                    arr_gate=arr_gate_m.group(1) if arr_gate_m else "—",
+                    duration=blk_m.group(1) if blk_m else "—",
+                    layover=layover,
                 )
+                entry["_ical_uid"] = str(component.get("uid", ""))
+                flights.append(entry)
 
         # 2. Extract individual legs bundled inside multi-day rotation report descriptions
         # e.g. SUMMARY "2904 BDL (0626-1706)" with "Rpt- 0626 13SEP" blocks in DESCRIPTION
@@ -353,6 +321,7 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
                 leg["start_dt"], leg["end_dt"], leg["equipment"], now,
                 layover=leg["layover"],
             )
+            entry["_ical_uid"] = str(component.get("uid", ""))
             flights.append(entry)
             if leg["layover"]:
                 layovers.append(leg["layover"])
@@ -377,6 +346,7 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
 
     # Sort flights chronologically
     flights.sort(key=lambda f: f["start"] or "")
+    all_parsed_flights = list(flights)
 
     # Drop flights that fully completed before today (keep in-progress/future ones)
     today_key = now.strftime("%Y-%m-%d")
@@ -405,7 +375,7 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
             featured_flight = flights[-1]
 
     # Calculate flight progress and coordinates for featured flight
-    progress_pct = 62  # Default illustration percentage
+    progress_pct = 0
     plane_pos = None
     bearing = 0.0
 
@@ -538,6 +508,7 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
         "upcoming_dates": upcoming_dates,
         "upcoming_flights": upcoming_flights,
         "flights": flights,
+        "_stored_flights": all_parsed_flights,
         "featured_flight": featured_flight,
         "plane_position": plane_pos,
         "bearing": round(bearing, 1),
@@ -550,41 +521,3 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
         "has_flight_today": has_flight_today,
         "last_updated": datetime.now(timezone.utc).isoformat(),
     }
-
-
-@app.route("/api/flights")
-@app.route("/api/data")
-def get_flights_api():
-    force_refresh = request.args.get("force", "0") in ("1", "true")
-    now_ts = time.time()
-
-    if not force_refresh and _cache["data"] and (now_ts - _cache["timestamp"] < CACHE_TTL_SECONDS):
-        return jsonify(_cache["data"])
-
-    try:
-        raw_content = fetch_ical_content(DEFAULT_ICAL_URL)
-        data = parse_calendar_data(raw_content)
-        _cache["data"] = data
-        _cache["timestamp"] = now_ts
-        return jsonify(data)
-    except Exception as e:
-        app.logger.exception("Failed to fetch/parse flight calendar data")
-        if _cache["data"]:
-            return jsonify(_cache["data"])
-        return jsonify({"success": False, "error": f"{type(e).__name__}: {e}"}), 500
-
-
-@app.route("/")
-def index():
-    return send_from_directory(".", "index.html")
-
-
-@app.route("/<path:filename>")
-def static_files(filename):
-    return send_from_directory(".", filename)
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
-
