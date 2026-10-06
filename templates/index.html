@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Dad’s Travel Tracker — Colin Dashboard (Map Updated)</title>
+<title>Flight Schedule Dashboard</title>
 
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -83,7 +83,7 @@
   .status{font-weight:600;color:var(--navy)}
   .drawer{margin-top:12px;background:#fff;border-radius:12px;padding:14px;border:1px solid #f0f0f0;display:none}
   .progress{height:10px;background:#eef3fb;border-radius:8px;overflow:hidden}
-  .progress > i{display:block;height:100%;background:var(--red);width:62%}
+  .progress > i{display:block;height:100%;background:var(--red);width:0%}
   .stay-row{display:flex;align-items:center;gap:12px}
   .mini-map{width:120px;height:80px;background:var(--sky);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--navy);font-weight:600}
   .weather{background:#fff;border-radius:8px;padding:8px 10px;display:inline-block;border:1px solid #f0f0f0}
@@ -98,21 +98,17 @@
   /* Leaflet container override to fit card */
   #map { width:100%; height:100%; display:block; }
 
-  /* Custom plane icon container (we rotate this) */
-  .plane-icon {
-    width:44px;
-    height:44px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    transform-origin:center center;
-    pointer-events:auto;
-  }
-  .plane-svg {
-    width:28px;
-    height:28px;
+  /* Aircraft marker points north by default and rotates to its heading. */
+  .aircraft-triangle {
+    width:22px;
+    height:24px;
+    display:block;
     fill:var(--red);
-    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.15));
+    stroke:#fff;
+    stroke-width:1.5;
+    stroke-linejoin:round;
+    filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35));
+    pointer-events:auto;
   }
 
   /* Airport marker style (simple circle) */
@@ -139,11 +135,17 @@
   <div class="container">
     <header>
       <div class="header-left">
-        <div class="title">Dad’s Travel Tracker — Colin's Personal Edition</div>
+        <div class="title">Dad’s Travel Tracker</div>
         <div class="underline" aria-hidden="true"></div>
-        <div class="greet" id="headerGreeting">Colin — here’s where Dad is today and where he's going next!</div>
+        <div class="greet" id="headerGreeting">Here’s the flight schedule and upcoming travel.</div>
       </div>
       <div class="header-right">
+        <a href="{% url 'add_flight' %}" style="color:#fff;font-size:13px;font-weight:600">Add flight</a>
+        <a href="{% url 'account' %}" style="color:#fff;font-size:13px;font-weight:600">Account</a>
+        <form method="post" action="{% url 'logout' %}" style="margin:0">
+          {% csrf_token %}
+          <button type="submit" style="border:1px solid rgba(255,255,255,.45);border-radius:7px;padding:7px 10px;background:transparent;color:#fff;font:inherit;cursor:pointer">Sign out</button>
+        </form>
         <div class="date-picker-box">
           <label for="dateSelect" class="date-picker-label">
             <svg class="cal-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -158,7 +160,7 @@
       </div>
     </header>
 
-    <main class="layout" role="main" aria-label="Colin dashboard">
+    <main class="layout" role="main" aria-label="Flight schedule dashboard">
       <section class="col-left">
         <!-- Flights -->
         <div class="card" id="flightsCard" aria-labelledby="flightsTitle">
@@ -228,7 +230,7 @@
           <div class="countdown">
             <div class="ring" aria-hidden="true" id="countdownRing">--</div>
             <div style="flex:1">
-              <div style="font-weight:700" id="countdownHeading">Dad will be home soon, Colin!</div>
+              <div style="font-weight:700" id="countdownHeading">Dad will be home soon.</div>
               <div style="margin-top:8px" class="mini-cal" id="countdownSub">Rotation schedule active</div>
               <div style="margin-top:10px;color:#666" id="countdownProgress">Checking flight rotation...</div>
             </div>
@@ -246,7 +248,7 @@
       </aside>
     </main>
 
-    <footer id="footerStatus">Last updated: checking calendar... — Flight times shown in your local time.</footer>
+    <footer id="footerStatus">Last updated: checking calendar... — All times local to Dad’s current location.</footer>
   </div>
 
   <!-- Modal -->
@@ -267,7 +269,7 @@
         <div style="display:flex;justify-content:space-between"><div>Block Duration</div><div id="modalDuration">3h 05m</div></div>
       </div>
 
-      <div style="margin-top:12px;color:#666">Colin, this is all the info about Dad’s plane today.</div>
+      <div style="margin-top:12px;color:#666">Flight information for today.</div>
     </div>
   </div>
 
@@ -275,106 +277,144 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
   <script>
-    // ---------- Utility: compute bearing between two lat/lon points ----------
-    function bearingBetween(lat1, lon1, lat2, lon2) {
+    const localFlightTimeFormatter = new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+    const localFlightDateFormatter = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric'
+    });
+
+    function formatFlightTime(isoTimestamp) {
+      const date = new Date(isoTimestamp);
+      return Number.isNaN(date.getTime()) ? '—' : localFlightTimeFormatter.format(date);
+    }
+
+    function formatFlightDate(isoTimestamp) {
+      const date = new Date(isoTimestamp);
+      return Number.isNaN(date.getTime()) ? '—' : localFlightDateFormatter.format(date);
+    }
+
+    function liveRouteProgress(origin, destination, position) {
       const toRad = deg => deg * Math.PI / 180;
-      const toDeg = rad => rad * 180 / Math.PI;
-      const φ1 = toRad(lat1), φ2 = toRad(lat2);
-      const Δλ = toRad(lon2 - lon1);
-      const y = Math.sin(Δλ) * Math.cos(φ2);
-      const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
-      const θ = Math.atan2(y, x);
-      return (toDeg(θ) + 360) % 360;
+      const φ1 = toRad(origin.lat);
+      const φ2 = toRad(destination.lat);
+      const φ3 = toRad(position.lat);
+      const Δλ12 = toRad(destination.lon - origin.lon);
+      const Δλ13 = toRad(position.lon - origin.lon);
+      const centralAngle = (lat1, lon1, lat2, lon2) => {
+        const Δφ = lat2 - lat1;
+        const Δλ = lon2 - lon1;
+        const a = Math.sin(Δφ / 2) ** 2
+          + Math.cos(lat1) * Math.cos(lat2) * Math.sin(Δλ / 2) ** 2;
+        return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+      const routeAngle = centralAngle(φ1, toRad(origin.lon), φ2, toRad(destination.lon));
+      if (!Number.isFinite(routeAngle) || routeAngle < 1e-9) return null;
+
+      const positionAngle = centralAngle(φ1, toRad(origin.lon), φ3, toRad(position.lon));
+      const routeBearing = Math.atan2(
+        Math.sin(Δλ12) * Math.cos(φ2),
+        Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ12)
+      );
+      const positionBearing = Math.atan2(
+        Math.sin(Δλ13) * Math.cos(φ3),
+        Math.cos(φ1) * Math.sin(φ3) - Math.sin(φ1) * Math.cos(φ3) * Math.cos(Δλ13)
+      );
+      const alongTrackAngle = Math.atan2(
+        Math.sin(positionAngle) * Math.cos(positionBearing - routeBearing),
+        Math.cos(positionAngle)
+      );
+      return Math.max(0, Math.min(100, Math.round((alongTrackAngle / routeAngle) * 100)));
     }
 
     // ---------- Initialize Map ----------
     const map = L.map('map', { zoomControl: true, attributionControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution: 'Tiles &copy; Esri — Sources: Esri, TomTom, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors, and the GIS User Community'
     }).addTo(map);
 
     let mapLayers = [];
     let selectedFlight = null;
     let allFlights = [];
-    let backendData = null;
-    let todayDateKey = null;
-
-    function formatLocalDateKey(date) {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-
-    function formatLocalDate(date, options) {
-      return date.toLocaleDateString('en-US', options);
-    }
-
-    function formatLocalTime(date) {
-      return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit'
-      });
-    }
-
-    function isSameFlight(a, b) {
-      return !!(a && b && a.flight === b.flight && a.start === b.start);
-    }
-
-    function localizeFlightTimes(flight, startOfToday, endOfWindow) {
-      if (!flight || !flight.start || !flight.end) return flight;
-      const start = new Date(flight.start);
-      const end = new Date(flight.end);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return flight;
-      const startDateKey = formatLocalDateKey(start);
-
-      return {
-        ...flight,
-        date_key: startDateKey,
-        date_display: formatLocalDate(start, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
-        dep_time_formatted: formatLocalTime(start),
-        arr_time_formatted: formatLocalTime(end),
-        dep_date_formatted: formatLocalDate(start, { month: 'short', day: 'numeric' }),
-        arr_date_formatted: formatLocalDate(end, { month: 'short', day: 'numeric' }),
-        in_two_month_window: start >= startOfToday && start <= endOfWindow
-      };
-    }
-
-    function buildAvailableDates(flights) {
-      const summaryByDate = new Map();
-
-      flights.forEach(flight => {
-        if (!flight || !flight.date_key) return;
-        if (!summaryByDate.has(flight.date_key)) {
-          summaryByDate.set(flight.date_key, {
-            date_key: flight.date_key,
-            date_display: flight.date_display,
-            flight_count: 0,
-            routes: [],
-            in_two_month_window: !!flight.in_two_month_window
-          });
-        }
-
-        const dateSummary = summaryByDate.get(flight.date_key);
-        dateSummary.flight_count += 1;
-        dateSummary.routes.push(flight.route);
-        dateSummary.in_two_month_window = dateSummary.in_two_month_window || !!flight.in_two_month_window;
-      });
-
-      return Array.from(summaryByDate.values()).sort((a, b) => a.date_key.localeCompare(b.date_key));
-    }
-
-    function formatArrivalDisplay(flight) {
-      if (!flight || !flight.arr_time_formatted) return '—';
-      return flight.arr_date_formatted && flight.arr_date_formatted !== flight.dep_date_formatted
-        ? `${flight.arr_time_formatted} (${flight.arr_date_formatted})`
-        : flight.arr_time_formatted;
-    }
+    let liveTrackTimer = null;
 
     function clearMapLayers() {
       mapLayers.forEach(layer => map.removeLayer(layer));
       mapLayers = [];
+    }
+
+    // ---------- Live ADS-B position via the authenticated same-origin OpenSky proxy ----------
+    function flightToCallsign(flight) {
+      const digits = (flight.flight || '').replace(/[^0-9]/g, '');
+      return digits ? `DAL${digits}` : null;
+    }
+
+    async function fetchLiveAdsbPosition(flight) {
+      const callsign = flightToCallsign(flight);
+      if (!callsign || !flight.origin || !flight.dest) return null;
+
+      const lats = [flight.origin.lat, flight.dest.lat];
+      const lons = [flight.origin.lon, flight.dest.lon];
+      const pad = 4; // degrees of buffer around the route's bounding box
+      const lamin = Math.min(...lats) - pad;
+      const lamax = Math.max(...lats) + pad;
+      const lomin = Math.min(...lons) - pad;
+      const lomax = Math.max(...lons) + pad;
+
+      try {
+        const params = new URLSearchParams({
+          lamin: String(Math.max(-90, lamin)),
+          lomin: String(Math.max(-180, lomin)),
+          lamax: String(Math.min(90, lamax)),
+          lomax: String(Math.min(180, lomax))
+        });
+        const url = `/api/opensky/states/?${params}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data || !data.states) return null;
+
+        const match = data.states.find(
+          s => typeof s[1] === 'string' && s[1].trim().toUpperCase() === callsign
+        );
+        if (!match) return null;
+
+        const [, , , , , lon, lat, , onGround, , track] = match;
+        if (lat == null || lon == null) return null;
+
+        return { lat, lon, track, onGround: !!onGround };
+      } catch (err) {
+        console.warn('OpenSky lookup failed, falling back to estimated position:', err);
+        return null;
+      }
+    }
+
+    function startLiveTracking(flight) {
+      stopLiveTracking();
+      if (!flight || flight.status !== 'In air') return;
+
+      const poll = async () => {
+        const livePos = await fetchLiveAdsbPosition(flight);
+        if (livePos && selectedFlight === flight) {
+          const livePct = liveRouteProgress(flight.origin, flight.dest, livePos);
+          if (livePct !== null) {
+            updateFlightProgress(livePct, true);
+          }
+          renderFlightOnMap(flight, null, livePos);
+        }
+      };
+      poll();
+      liveTrackTimer = setInterval(poll, 45000); // OpenSky free tier: keep polling infrequent
+    }
+
+    function stopLiveTracking() {
+      if (liveTrackTimer) {
+        clearInterval(liveTrackTimer);
+        liveTrackTimer = null;
+      }
     }
 
     function addAirportMarker(airport) {
@@ -392,9 +432,9 @@
 
       const label = L.divIcon({
         className: 'airport-label',
-        html: `<div style="background:rgba(255,255,255,0.95);padding:4px 8px;border-radius:6px;border:1px solid #eee;font-size:12px;color:var(--navy);font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.08);white-space:nowrap">${airport.code} — ${airport.city}</div>`,
-        iconSize: [140, 24],
-        iconAnchor: [0, -10]
+        html: `<div style="background:rgba(255,255,255,0.95);padding:4px 8px;border-radius:6px;border:1px solid #eee;font-size:12px;color:var(--navy);font-weight:700;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.08);white-space:nowrap">${airport.code}</div>`,
+        iconSize: [60, 24],
+        iconAnchor: [30, -10]
       });
       const labelMarker = L.marker([airport.lat, airport.lon], { icon: label, interactive: false }).addTo(map);
       mapLayers.push(labelMarker);
@@ -402,7 +442,18 @@
       return marker;
     }
 
-    function renderFlightOnMap(flight, progressPct) {
+    function bearingBetween(lat1, lon1, lat2, lon2) {
+      const toRad = deg => deg * Math.PI / 180;
+      const toDeg = rad => rad * 180 / Math.PI;
+      const φ1 = toRad(lat1), φ2 = toRad(lat2);
+      const Δλ = toRad(lon2 - lon1);
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2)
+        - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function renderFlightOnMap(flight, progressPct, livePos) {
       clearMapLayers();
       if (!flight || !flight.origin || !flight.dest) return;
 
@@ -427,31 +478,46 @@
       const bounds = L.latLngBounds([[origin.lat, origin.lon], [dest.lat, dest.lon]]);
       map.fitBounds(bounds.pad(0.3));
 
-      // Calculate plane position and bearing
-      const bearing = bearingBetween(origin.lat, origin.lon, dest.lat, dest.lon);
-      const t = Math.max(0.05, Math.min(0.95, (progressPct !== undefined ? progressPct : 60) / 100));
-      const planeLat = origin.lat + (dest.lat - origin.lat) * t;
-      const planeLon = origin.lon + (dest.lon - origin.lon) * t;
+      // Use real ADS-B position when available, otherwise estimate from elapsed progress
+      let planeLat, planeLon;
+      if (livePos) {
+        planeLat = livePos.lat;
+        planeLon = livePos.lon;
+      } else {
+        const t = Math.max(0.05, Math.min(0.95, (progressPct !== undefined ? progressPct : 60) / 100));
+        planeLat = origin.lat + (dest.lat - origin.lat) * t;
+        planeLon = origin.lon + (dest.lon - origin.lon) * t;
+      }
 
-      const planeHtml = `
-        <div class="plane-icon" style="transform: rotate(${bearing}deg);">
-          <svg class="plane-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9L2 14v2l7-1v4l-2 1v1l3-0.5L12 21v-4l7-1z"/>
-          </svg>
-        </div>
-      `;
-      const planeIcon = L.divIcon({
+      const heading = livePos && Number.isFinite(livePos.track)
+        ? livePos.track
+        : bearingBetween(origin.lat, origin.lon, dest.lat, dest.lon);
+      const aircraftIcon = L.divIcon({
         className: '',
-        html: planeHtml,
-        iconSize: [44, 44],
-        iconAnchor: [22, 22]
+        html: `<svg class="aircraft-triangle" style="transform:rotate(${heading}deg)" viewBox="0 0 24 26" role="img" aria-label="Aircraft heading ${Math.round(heading)} degrees"><path d="M12 1 23 25 12 19 1 25Z"/></svg>`,
+        iconSize: [24, 26],
+        iconAnchor: [12, 13]
       });
 
-      const planeMarker = L.marker([planeLat, planeLon], { icon: planeIcon, interactive: true }).addTo(map);
-      planeMarker.on('click', () => openModal(flight));
-      mapLayers.push(planeMarker);
+      const aircraftMarker = L.marker([planeLat, planeLon], { icon: aircraftIcon, interactive: true }).addTo(map);
+      aircraftMarker.on('click', () => openModal(flight));
+      mapLayers.push(aircraftMarker);
 
-      document.getElementById('mapCaption').textContent = `Dad’s flight: ${flight.flight} (${origin.code} → ${dest.code}) — Status: ${flight.status}.`;
+      const trackingNote = livePos
+        ? ' (live ADS-B position via OpenSky)'
+        : flight.status === 'In air'
+          ? ' (estimated position; live ADS-B unavailable)'
+          : '';
+      document.getElementById('mapCaption').textContent = `Dad’s flight: ${flight.flight} (${origin.code} → ${dest.code}) — Status: ${flight.status}${trackingNote}.`;
+    }
+
+    function updateFlightProgress(progressPct, isLive) {
+      const fill = document.getElementById('drawerProgressFill');
+      const text = document.getElementById('drawerProgressText');
+      fill.style.width = `${progressPct}%`;
+      text.textContent = isLive
+        ? `Live ADS-B position: about ${progressPct}% along the route.`
+        : `Estimated from schedule: about ${progressPct}% through this flight.`;
     }
 
     // ---------- Modal Handling ----------
@@ -469,8 +535,8 @@
       document.getElementById('modalRoute').textContent = `${flight.origin.code} (${flight.origin.city}) → ${flight.dest.code} (${flight.dest.city})`;
       document.getElementById('modalGate').textContent = `Dep: Gate ${flight.dep_gate || '—'} / Arr: Gate ${flight.arr_gate || '—'}`;
       document.getElementById('modalStatus').textContent = flight.status || 'On time';
-      document.getElementById('modalSched').textContent = `${flight.dep_time_formatted} (${flight.dep_date_formatted})`;
-      document.getElementById('modalEta').textContent = formatArrivalDisplay(flight);
+      document.getElementById('modalSched').textContent = `${formatFlightTime(flight.start)} (${formatFlightDate(flight.start)})`;
+      document.getElementById('modalEta').textContent = formatFlightTime(flight.end);
       document.getElementById('modalDuration').textContent = flight.duration ? `${flight.duration} hrs` : '—';
 
       modal.style.display = 'flex';
@@ -510,57 +576,60 @@
       document.getElementById('drawerType').textContent = flight.flight_type || 'Domestic';
       document.getElementById('drawerAircraft').textContent = flight.aircraft || 'Delta Boeing 737';
 
-      const pct = (flight.status === 'Completed') ? 100 : (flight.status === 'In air' ? 62 : 0);
-      document.getElementById('drawerProgressFill').style.width = `${pct}%`;
+      const scheduledStart = Date.parse(flight.start);
+      const scheduledEnd = Date.parse(flight.end);
+      const scheduledProgress = Number.isFinite(scheduledStart)
+        && Number.isFinite(scheduledEnd)
+        && scheduledEnd > scheduledStart
+        ? Math.round(((Date.now() - scheduledStart) / (scheduledEnd - scheduledStart)) * 100)
+        : 0;
+      const pct = flight.status === 'Completed'
+        ? 100
+        : flight.status === 'In air'
+          ? Math.max(0, Math.min(100, Number.isFinite(progressPct) ? progressPct : scheduledProgress))
+          : 0;
+      if (flight.status === 'In air') {
+        updateFlightProgress(pct, false);
+      } else {
+        document.getElementById('drawerProgressFill').style.width = `${pct}%`;
+      }
       if (flight.status === 'Completed') {
         document.getElementById('drawerProgressText').textContent = 'Flight arrived at destination.';
-      } else if (flight.status === 'In air') {
-        document.getElementById('drawerProgressText').textContent = `Dad is ~${pct}% through this flight.`;
-      } else {
-        document.getElementById('drawerProgressText').textContent = `Departs at ${flight.dep_time_formatted} (${flight.dep_date_formatted}).`;
+      } else if (flight.status !== 'In air') {
+        document.getElementById('drawerProgressText').textContent =
+          `Departs at ${formatFlightTime(flight.start)} (${formatFlightDate(flight.start)}).`;
       }
 
       // Render on map
       renderFlightOnMap(flight, pct);
+      startLiveTracking(flight);
     }
 
     // ---------- Fetch Live Data from Backend ----------
     async function loadFlightData() {
       try {
-        const res = await fetch('/api/flights');
+        const res = await fetch('/api/flights/');
         const data = await res.json().catch(() => null);
         if (!res.ok) {
           throw new Error((data && data.error) ? data.error : `Network response was not ok (HTTP ${res.status})`);
         }
+
+        backendData = data;
+        allFlights = data.flights || [];
+        const updatedDate = data.last_updated ? new Date(data.last_updated) : new Date();
+        const updateStatus = data.stale
+          ? (data.refresh_warning || 'Showing the last saved schedule because refresh failed.')
+          : 'Synchronized with your iCal feed.';
+        document.getElementById('footerStatus').textContent =
+          `Last updated: ${updatedDate.toLocaleTimeString()} — ${updateStatus}`;
 
         if (!data.flights || data.flights.length === 0) {
           document.getElementById('flightsTableBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:16px;">No flights currently scheduled.</td></tr>';
           return;
         }
 
-        const today = new Date();
-        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const twoMonthsLater = new Date(today);
-        twoMonthsLater.setDate(twoMonthsLater.getDate() + 60);
-        const endOfWindow = new Date(twoMonthsLater.getFullYear(), twoMonthsLater.getMonth(), twoMonthsLater.getDate(), 23, 59, 59, 999);
-
-        allFlights = (data.flights || []).map(flight => localizeFlightTimes(flight, startOfToday, endOfWindow));
-        backendData = {
-          ...data,
-          flights: allFlights,
-          today_date_key: formatLocalDateKey(today),
-          today_date_display: formatLocalDate(today, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
-          window_start: formatLocalDateKey(today),
-          window_end: formatLocalDateKey(twoMonthsLater),
-          window_display: `${formatLocalDate(today, { month: 'short', day: 'numeric', year: 'numeric' })} – ${formatLocalDate(twoMonthsLater, { month: 'short', day: 'numeric', year: 'numeric' })}`,
-          available_dates: buildAvailableDates(allFlights),
-          upcoming_flights: allFlights.filter(f => f.in_two_month_window)
-        };
-        backendData.upcoming_dates = backendData.available_dates.filter(d => d.in_two_month_window);
-        backendData.featured_flight = allFlights.find(f => isSameFlight(f, data.featured_flight)) || null;
-
         // Setup top-right Date Selector
-        populateDateSelector(backendData);
+        populateDateSelector(data);
 
         // Default to today's date
         applyDateFilter('today');
@@ -570,14 +639,15 @@
         const countdownMode = data.countdown_mode || 'home';
         document.getElementById('countdownRing').textContent = `${days}d`;
         document.getElementById('countdownHeading').textContent = countdownMode === 'leave'
-          ? `Dad will leave in ${days} day${days === 1 ? '' : 's'}, Colin!`
-          : `Dad will be home in ${days} day${days === 1 ? '' : 's'}, Colin!`;
+          ? `Dad will leave in ${days} day${days === 1 ? '' : 's'}.`
+          : `Dad will be home in ${days} day${days === 1 ? '' : 's'}.`;
         document.getElementById('countdownSub').textContent = `Trip schedule: ${allFlights.length} flight legs total`;
-        document.getElementById('countdownProgress').textContent = `Calendar synchronized with live iCloud feed.`;
-
-        // Update Footer
-        const updatedDate = new Date();
-        document.getElementById('footerStatus').textContent = `Last updated: ${updatedDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} — Flight times shown in your local time.`;
+        const todayFlights = allFlights.filter(flight => flight.date_key === todayDateKey);
+        const completedToday = todayFlights.filter(flight => flight.status === 'Completed').length;
+        document.getElementById('countdownProgress').textContent =
+          countdownMode === 'home' && todayFlights.length
+            ? `Dad has completed ${completedToday} of ${todayFlights.length} flights today.`
+            : updateStatus;
 
       } catch (err) {
         console.error('Failed to load flight data:', err);
@@ -589,8 +659,8 @@
       const select = document.getElementById('dateSelect');
       select.innerHTML = '';
 
-      todayDateKey = data.today_date_key || formatLocalDateKey(new Date());
-      const todayDisplay = data.today_date_display || formatLocalDate(new Date(), { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      todayDateKey = data.today_date_key || new Date().toISOString().split('T')[0];
+      const todayDisplay = data.today_date_display || new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
       const windowDisplay = data.window_display || 'Next 2 Months';
 
       // 1. Today option
@@ -661,28 +731,28 @@
 
       let filtered = [];
       let dateBadgeText = 'Today';
-      let greetingText = "Colin — here’s where Dad is today and where he's going next!";
+      let greetingText = "Here’s the flight schedule and upcoming travel.";
       const windowDisplay = (backendData && backendData.window_display) ? backendData.window_display : 'Next 2 Months';
 
       if (dateKey === 'all') {
         filtered = allFlights;
         dateBadgeText = 'All Dates';
-        greetingText = `Colin — viewing Dad’s full schedule (${allFlights.length} flights)`;
+        greetingText = `Viewing the full schedule (${allFlights.length} flights)`;
       } else if (dateKey === '2months') {
         filtered = allFlights.filter(f => f.in_two_month_window);
         dateBadgeText = 'Next 2 Months';
-        greetingText = `Colin — viewing flights for the next 2 months (${windowDisplay})`;
+        greetingText = `Viewing flights for the next 2 months (${windowDisplay})`;
       } else if (dateKey === 'today') {
         filtered = allFlights.filter(f => f.date_key === todayDateKey);
         dateBadgeText = 'Today';
         const todayDisplay = backendData ? backendData.today_date_display : 'Today';
-        greetingText = `Colin — here’s where Dad is today (${todayDisplay})!`;
+        greetingText = `Dad’s schedule for today (${todayDisplay})`;
       } else {
         filtered = allFlights.filter(f => f.date_key === dateKey);
         const matchDate = (backendData && backendData.available_dates) ? backendData.available_dates.find(d => d.date_key === dateKey) : null;
         const dateDisplay = matchDate ? matchDate.date_display : dateKey;
         dateBadgeText = dateDisplay;
-        greetingText = `Colin — viewing Dad’s flights for ${dateDisplay}`;
+        greetingText = `Dad’s flights for ${dateDisplay}`;
       }
 
       document.getElementById('flightsDateBadge').textContent = dateBadgeText;
@@ -720,7 +790,8 @@
         // Hide drawer when no flights on selected date
         document.getElementById('flightDrawer').style.display = 'none';
         document.getElementById('mapCaption').textContent = `${msg} Showing map overview.`;
-        
+        stopLiveTracking();
+
         if (allFlights.length > 0) {
           renderFlightOnMap(allFlights[0], 0);
         }
@@ -773,8 +844,8 @@
           tr.innerHTML = `
             <td><strong>${f.flight}</strong></td>
             <td>${f.origin.code} → ${f.dest.code}</td>
-            <td>${f.dep_time_formatted} <small style="color:#888">${f.dep_date_formatted}</small></td>
-            <td>${f.arr_time_formatted}${f.arr_date_formatted !== f.dep_date_formatted ? ` <small style="color:#888">${f.arr_date_formatted}</small>` : ''}</td>
+            <td>${formatFlightTime(f.start)} <small style="color:#888">${formatFlightDate(f.start)}</small></td>
+            <td>${formatFlightTime(f.end)}</td>
             <td class="status">${f.status}</td>
           `;
 
@@ -796,7 +867,7 @@
 
       const initialPct = (dateKey === 'today' && backendData)
         ? backendData.progress_percentage
-        : (activeFlight.status === 'Completed' ? 100 : (activeFlight.status === 'In air' ? 62 : 0));
+        : undefined;
 
       selectFlight(activeFlight, initialPct);
 

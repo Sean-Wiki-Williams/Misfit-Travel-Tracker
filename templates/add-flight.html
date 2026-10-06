@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ form_title|default:"Add a flight manually" }} — Dad's Flight Tracker</title>
+  <style>
+    body{margin:0;background:#f2f5f8;color:#1a1a1a;font:16px system-ui,sans-serif}
+    main{max-width:720px;margin:6vh auto;padding:28px;background:#fff;border-radius:12px;box-shadow:0 8px 24px #002b5c18}
+    h1,h2{color:#002b5c}h1{margin-top:0;font-size:24px}h2{font-size:19px;margin-top:30px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+    label{display:block;margin:14px 0 6px;font-weight:600}
+    input{box-sizing:border-box;width:100%;padding:10px;border:1px solid #aab4bf;border-radius:6px;font:inherit}
+    button,.link{display:inline-block;margin:18px 8px 0 0;padding:10px 15px;border:0;border-radius:6px;background:#002b5c;color:#fff;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+    .secondary{background:#637384}.hint{color:#555;font-size:14px;line-height:1.5}
+    .error{color:#8a1020;font-size:14px}.message{padding:10px;border-radius:6px;background:#eef8ee;color:#245b2a}
+    #lookup-message{min-height:1.4em}
+    .flight{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-top:1px solid #e5e9ed}
+    .flight form{margin:0}.flight button{margin:0;background:#8a1020}
+    .flight-actions{display:flex;gap:8px}.flight-actions .link{margin:0;padding:8px 12px}
+    @media(max-width:560px){main{margin:0;padding:22px;border-radius:0}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{{ form_title|default:"Add a flight manually" }}</h1>
+    <p class="hint">Departure is entered in the origin airport's local time; arrival is entered in the destination airport's local time. The schedule will display the resulting times in each viewer's browser time zone. Repeated daylight-saving times use the earlier occurrence; nonexistent times are rejected. SkyLink can look up currently published flight details; review the returned dates and times before saving.</p>
+    {% for message in messages %}<p class="message">{{ message }}</p>{% endfor %}
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="grid">
+        {% for field in form %}
+          <div>
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.name == "flight_number" %}
+              <button type="button" id="lookup-flight" data-url="{% url 'lookup_flight' %}">Look up flight</button>
+              <div id="lookup-message" class="hint" role="status" aria-live="polite"></div>
+            {% endif %}
+            {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <button type="submit">{{ submit_label|default:"Save flight" }}</button>
+      <a class="link secondary" href="{% url 'home' %}">Back to schedule</a>
+    </form>
+
+    {% if manual_flights %}
+      <h2>Your manually added flights</h2>
+      {% for flight in manual_flights %}
+        <div class="flight">
+          <div>
+            <strong>{{ flight.flight_number }} · {{ flight.origin_code }} → {{ flight.dest_code }}</strong>
+            <div class="hint">Departs <time class="local-time" datetime="{{ flight.start_time|date:'c' }}">{{ flight.start_time|date:"M j, Y H:i" }}</time></div>
+          </div>
+          <div class="flight-actions">
+            <a class="link" href="{% url 'edit_flight' flight.id %}">Edit</a>
+            <form method="post" action="{% url 'delete_flight' flight.id %}">
+              {% csrf_token %}
+              <button type="submit">Remove</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </main>
+  <script>
+    const lookupButton = document.querySelector("#lookup-flight");
+    lookupButton.addEventListener("click", async () => {
+      const message = document.querySelector("#lookup-message");
+      const flightNumber = document.querySelector("#id_flight_number").value;
+      const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+      lookupButton.disabled = true;
+      message.textContent = "Looking up flight…";
+      try {
+        const response = await fetch(lookupButton.dataset.url, {
+          method: "POST",
+          headers: {"X-CSRFToken": csrfToken},
+          body: new URLSearchParams({
+            flight_number: flightNumber,
+            csrfmiddlewaretoken: csrfToken
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "Flight lookup failed.");
+        }
+        for (const [name, value] of Object.entries(result.flight)) {
+          const input = document.querySelector(`#id_${name}`);
+          if (input && (value || !["dep_gate", "arr_gate"].includes(name))) {
+            input.value = value;
+          }
+        }
+        const status = result.flight.status ? ` Status: ${result.flight.status}.` : "";
+        message.textContent = `Flight information found.${status} Review the values before saving.`;
+      } catch (error) {
+        message.textContent = error.message || "Flight lookup failed.";
+      } finally {
+        lookupButton.disabled = false;
+      }
+    });
+
+    document.querySelectorAll(".local-time").forEach((element) => {
+      const date = new Date(element.dateTime);
+      if (!Number.isNaN(date.getTime())) {
+        element.textContent = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium", timeStyle: "short"
+        }).format(date);
+      }
+    });
+  </script>
+</body>
+</html>
