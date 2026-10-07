@@ -20,7 +20,7 @@
     <h1>Create your account</h1>
     <p>Your email identifies your account; your schedule is visible only after signing in.</p>
     {% if form.non_field_errors %}<div class="errors">{{ form.non_field_errors }}</div>{% endif %}
-    <form method="post">
+    <form method="post" onsubmit="var b=this.querySelector('button[type=submit]');if(b.disabled)return false;b.disabled=true;b.textContent='Creating account…';">
       {% csrf_token %}
       <label for="email">Email</label>
       <input id="email" name="email" type="email" value="{{ form.email.value|default:'' }}" autocomplete="email" maxlength="320" required>

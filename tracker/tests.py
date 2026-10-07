@@ -114,6 +114,19 @@ class UserScheduleTests(TestCase):
         })
         self.assertRedirects(response, reverse("home"))
 
+    def test_registration_race_shows_error_instead_of_server_error(self):
+        from django.db import IntegrityError
+
+        with patch("tracker.forms.RegistrationForm.save", side_effect=IntegrityError("UNIQUE")):
+            response = self.client.post(reverse("register"), {
+                "email": "race@example.com",
+                "password1": "a-strong-test-password",
+                "password2": "a-strong-test-password",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already exists")
+
     def test_csrf_protection(self):
         csrf_client = Client(enforce_csrf_checks=True)
         response = csrf_client.post(reverse("register"), {
