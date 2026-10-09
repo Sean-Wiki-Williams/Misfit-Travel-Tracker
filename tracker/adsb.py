@@ -65,7 +65,14 @@ def _to_state_vector(aircraft):
     ]
 
 
-def fetch_callsign_states(callsign):
+def _within_bounds(state, bounds):
+    return (
+        bounds["lamin"] <= state[6] <= bounds["lamax"]
+        and bounds["lomin"] <= state[5] <= bounds["lomax"]
+    )
+
+
+def fetch_callsign_states(callsign, bounds=None):
     try:
         response = requests.get(
             ADSB_LOL_CALLSIGN_URL.format(callsign=callsign),
@@ -89,6 +96,6 @@ def fetch_callsign_states(callsign):
         for item in aircraft
         if isinstance(item, dict)
         for state in [_to_state_vector(item)]
-        if state is not None
+        if state is not None and (bounds is None or _within_bounds(state, bounds))
     ]
     return {"time": int(time.time()), "states": states}

@@ -469,6 +469,24 @@ END:VCALENDAR
         self.assertEqual((state[1], state[5], state[6], state[10]), ("DAL653", -85.5, 33.8, 273.1))
         self.assertTrue(calls[-1].endswith("/DAL653"))
 
+    def test_adsb_lol_ignores_aircraft_outside_the_route_area(self):
+        self.create_user("adsb-outside@example.com")
+        adsb_response = Mock(status_code=200, ok=True)
+        adsb_response.json.return_value = {"ac": [{
+            "hex": "a7f684", "flight": "AAL54", "lat": 5.0, "lon": 20.0,
+            "alt_baro": 35000, "gs": 480, "track": 90.0,
+        }]}
+        fake_get, _ = self.route_requests(Mock(status_code=429, ok=False), adsb_response)
+
+        with patch("requests.get", side_effect=fake_get):
+            response = self.client.get(reverse("opensky_states"), {
+                "lamin": "25", "lomin": "-90", "lamax": "50", "lomax": "-60",
+                "callsign": "AAL54",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["states"], [])
+
     def test_adsb_lol_not_used_when_opensky_has_the_callsign(self):
         self.create_user("adsb-unused@example.com")
         opensky_response = Mock(status_code=200, ok=True)

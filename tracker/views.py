@@ -248,7 +248,7 @@ def _opensky_response(request, user_id):
 
     if callsign and (result is None or not states_contain_callsign(result["states"], callsign)):
         try:
-            fallback = fetch_callsign_states(callsign)
+            fallback = fetch_callsign_states(callsign, bounds)
         except AdsbLookupError as error:
             logger.warning("adsb.lol lookup failed for user %s: %s", user_id, error)
         else:
