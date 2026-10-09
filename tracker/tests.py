@@ -560,3 +560,10 @@ class SharedDashboardTests(TestCase):
         anonymous = Client()
         self.assertEqual(anonymous.get(reverse("home")).status_code, 302)
         self.assertEqual(anonymous.get(reverse("flights_api")).status_code, 401)
+
+
+class AboutPageTests(TestCase):
+    def test_about_is_public_and_has_no_ads(self):
+        response = self.client.get(reverse('about'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'adsbygoogle.js')

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -8,8 +8,6 @@
 <title>Flight Schedule Dashboard</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7380688007699870"
-     crossorigin="anonymous"></script>
 
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -79,7 +77,7 @@
 
   .layout{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:20px}
   .col-left{display:flex;flex-direction:column;gap:24px}
-  .card{background:var(--warm);border-radius:var(--radius-lg);padding:var(--pad);box-shadow:var(--shadow)}
+  .card{background:var(--warm);border:0;border-radius:var(--radius-lg);padding:var(--pad);box-shadow:var(--shadow)}
   .accent{height:6px;background:var(--red);border-radius:6px 6px 0 0;margin:-18px -18px 12px -18px}
   .panel-title{font-size:18px;font-weight:600;margin-bottom:12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center}
   .date-badge{font-size:12px;font-weight:600;color:var(--navy);background:var(--sky);padding:3px 8px;border-radius:6px}
@@ -128,13 +126,38 @@
     box-shadow:0 2px 6px rgba(0,0,0,0.12);
   }
 
+  .plane-backdrop{display:none;position:fixed;inset:0;align-items:center;justify-content:center;z-index:2000;background:rgba(0,0,0,0.45);padding:16px}
+  .plane-modal{width:100%;max-width:420px;max-height:100%;overflow-y:auto;background:var(--warm);border-radius:12px;padding:18px;box-shadow:var(--shadow);position:relative}
+
+  .header-right{flex-wrap:wrap}
+  .date-select.form-select{width:auto;min-width:0;text-overflow:ellipsis}
+  .date-picker-box{min-width:0;max-width:100%}
+  .layout > *{min-width:0}
+  table{min-width:520px}
+
   @media(max-width:980px){
     .layout{grid-template-columns:1fr;gap:18px}
     .map-card{height:420px}
     header{flex-direction:column;align-items:flex-start}
     .header-right{width:100%}
     .date-picker-box{width:100%;justify-content:space-between}
-    .date-select{max-width:none;flex:1}
+    .date-select.form-select{max-width:none;flex:1;width:auto}
+  }
+
+  @media(max-width:576px){
+    .container{margin:12px auto;padding:0 10px}
+    header{padding:12px 14px}
+    .layout{margin-top:14px}
+    .col-left{gap:16px}
+    .card{padding:14px}
+    .accent{margin:-14px -14px 12px -14px}
+    th,td{padding:10px 6px;font-size:14px}
+    .map-card{height:340px}
+    .countdown{gap:12px}
+    .ring{width:72px;height:72px;font-size:17px;flex-shrink:0}
+    .date-picker-label{font-size:12px}
+    .date-picker-box{padding:6px 10px;gap:8px;flex-direction:column;align-items:stretch}
+    .date-select.form-select{width:100%;flex:none}
   }
 </style>
 </head>
@@ -142,9 +165,9 @@
   <div class="container">
     <header>
       <div class="header-left">
-        <div class="title">Dad’s Travel Tracker</div>
+        <div class="title">Dadâ€™s Travel Tracker</div>
         <div class="underline" aria-hidden="true"></div>
-        <div class="greet" id="headerGreeting">Here’s the flight schedule and upcoming travel.</div>
+        <div class="greet" id="headerGreeting">Hereâ€™s the flight schedule and upcoming travel.</div>
       </div>
       <div class="header-right">
         {% if shared %}
@@ -178,11 +201,11 @@
         <div class="card" id="flightsCard" aria-labelledby="flightsTitle">
           <div class="accent" aria-hidden="true"></div>
           <div id="flightsTitle" class="panel-title">
-            <span>Dad’s Flights</span>
+            <span>Dadâ€™s Flights</span>
             <span class="date-badge" id="flightsDateBadge">Today</span>
           </div>
           <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0" role="table" aria-label="Flights table">
+          <table role="table" aria-label="Flights table">
             <thead>
               <tr><th>Flight</th><th>Route</th><th>Departs</th><th>Arrives</th><th>Status</th></tr>
             </thead>
@@ -196,14 +219,14 @@
 
           <div id="flightDrawer" class="drawer" role="region" aria-live="polite">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <div style="font-weight:700" id="drawerRoute">ATL → LAX</div>
+              <div style="font-weight:700" id="drawerRoute">ATL â†’ LAX</div>
               <div style="color:#666" id="drawerDuration">Duration: 4h 27m</div>
             </div>
             <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap">
-              <div><strong>Dep Gate</strong><div id="drawerDepGate">—</div></div>
-              <div><strong>Arr Gate</strong><div id="drawerArrGate">—</div></div>
+              <div><strong>Dep Gate</strong><div id="drawerDepGate">â€”</div></div>
+              <div><strong>Arr Gate</strong><div id="drawerArrGate">â€”</div></div>
               <div><strong>Type</strong><div id="drawerType">Domestic</div></div>
-              <div><strong>Aircraft</strong><div id="drawerAircraft">Delta 73N — Boeing 737‑900ER</div></div>
+              <div><strong>Aircraft</strong><div id="drawerAircraft">Delta 73N â€” Boeing 737â€‘900ER</div></div>
             </div>
             <div style="margin-top:12px">
               <div style="font-size:13px;color:#666;margin-bottom:6px">Flight progress</div>
@@ -238,21 +261,21 @@
       </aside>
     </main>
 
-    <footer id="footerStatus">Last updated: checking calendar... — All times local to Dad’s current location.</footer>
+    <footer id="footerStatus">Last updated: checking calendar... â€” All times local to Dadâ€™s current location.</footer>
   </div>
 
   <!-- Modal -->
-  <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true" style="display:none;position:fixed;inset:0;align-items:center;justify-content:center;z-index:1000;background:rgba(0,0,0,0.45)">
-    <div class="modal" role="document" aria-labelledby="modalTitle" style="width:420px;background:var(--warm);border-radius:12px;padding:18px;box-shadow:var(--shadow);position:relative">
-      <div class="close" id="modalClose" aria-label="Close" style="position:absolute;right:12px;top:12px;width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">✕</div>
-      <h3 id="modalTitle" style="margin:0 0 8px 0;color:var(--navy)">Dad’s Plane Today</h3>
-      <div style="margin-bottom:8px;color:#666" id="modalAircraft">Delta 73N — Boeing 737‑900ER</div>
+  <div class="plane-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="plane-modal" role="document" aria-labelledby="modalTitle">
+      <div class="close" id="modalClose" aria-label="Close" style="position:absolute;right:12px;top:12px;width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">âœ•</div>
+      <h3 id="modalTitle" style="margin:0 0 8px 0;color:var(--navy)">Dadâ€™s Plane Today</h3>
+      <div style="margin-bottom:8px;color:#666" id="modalAircraft">Delta 73N â€” Boeing 737â€‘900ER</div>
 
       <div style="display:flex;flex-direction:column;gap:8px">
         <div style="display:flex;justify-content:space-between"><div>Tail / Ship Number</div><div><strong id="modalTail">N8XXDN</strong></div></div>
         <div style="display:flex;justify-content:space-between"><div>Flight Number</div><div id="modalFlightNum">DL1234</div></div>
-        <div style="display:flex;justify-content:space-between"><div>Route</div><div id="modalRoute">ATL → LAX</div></div>
-        <div style="display:flex;justify-content:space-between"><div>Gate</div><div id="modalGate">Dep: — / Arr: —</div></div>
+        <div style="display:flex;justify-content:space-between"><div>Route</div><div id="modalRoute">ATL â†’ LAX</div></div>
+        <div style="display:flex;justify-content:space-between"><div>Gate</div><div id="modalGate">Dep: â€” / Arr: â€”</div></div>
         <div style="display:flex;justify-content:space-between"><div>Status</div><div id="modalStatus" style="font-weight:600;color:var(--navy)">On time</div></div>
         <div style="display:flex;justify-content:space-between"><div>Scheduled Departure</div><div id="modalSched">3:15 PM</div></div>
         <div style="display:flex;justify-content:space-between"><div>Estimated Arrival</div><div id="modalEta">5:41 PM</div></div>
@@ -278,39 +301,39 @@
 
     function formatFlightTime(isoTimestamp) {
       const date = new Date(isoTimestamp);
-      return Number.isNaN(date.getTime()) ? '—' : localFlightTimeFormatter.format(date);
+      return Number.isNaN(date.getTime()) ? 'â€”' : localFlightTimeFormatter.format(date);
     }
 
     function formatFlightDate(isoTimestamp) {
       const date = new Date(isoTimestamp);
-      return Number.isNaN(date.getTime()) ? '—' : localFlightDateFormatter.format(date);
+      return Number.isNaN(date.getTime()) ? 'â€”' : localFlightDateFormatter.format(date);
     }
 
     function liveRouteProgress(origin, destination, position) {
       const toRad = deg => deg * Math.PI / 180;
-      const φ1 = toRad(origin.lat);
-      const φ2 = toRad(destination.lat);
-      const φ3 = toRad(position.lat);
-      const Δλ12 = toRad(destination.lon - origin.lon);
-      const Δλ13 = toRad(position.lon - origin.lon);
+      const Ï†1 = toRad(origin.lat);
+      const Ï†2 = toRad(destination.lat);
+      const Ï†3 = toRad(position.lat);
+      const Î”Î»12 = toRad(destination.lon - origin.lon);
+      const Î”Î»13 = toRad(position.lon - origin.lon);
       const centralAngle = (lat1, lon1, lat2, lon2) => {
-        const Δφ = lat2 - lat1;
-        const Δλ = lon2 - lon1;
-        const a = Math.sin(Δφ / 2) ** 2
-          + Math.cos(lat1) * Math.cos(lat2) * Math.sin(Δλ / 2) ** 2;
+        const Î”Ï† = lat2 - lat1;
+        const Î”Î» = lon2 - lon1;
+        const a = Math.sin(Î”Ï† / 2) ** 2
+          + Math.cos(lat1) * Math.cos(lat2) * Math.sin(Î”Î» / 2) ** 2;
         return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       };
-      const routeAngle = centralAngle(φ1, toRad(origin.lon), φ2, toRad(destination.lon));
+      const routeAngle = centralAngle(Ï†1, toRad(origin.lon), Ï†2, toRad(destination.lon));
       if (!Number.isFinite(routeAngle) || routeAngle < 1e-9) return null;
 
-      const positionAngle = centralAngle(φ1, toRad(origin.lon), φ3, toRad(position.lon));
+      const positionAngle = centralAngle(Ï†1, toRad(origin.lon), Ï†3, toRad(position.lon));
       const routeBearing = Math.atan2(
-        Math.sin(Δλ12) * Math.cos(φ2),
-        Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ12)
+        Math.sin(Î”Î»12) * Math.cos(Ï†2),
+        Math.cos(Ï†1) * Math.sin(Ï†2) - Math.sin(Ï†1) * Math.cos(Ï†2) * Math.cos(Î”Î»12)
       );
       const positionBearing = Math.atan2(
-        Math.sin(Δλ13) * Math.cos(φ3),
-        Math.cos(φ1) * Math.sin(φ3) - Math.sin(φ1) * Math.cos(φ3) * Math.cos(Δλ13)
+        Math.sin(Î”Î»13) * Math.cos(Ï†3),
+        Math.cos(Ï†1) * Math.sin(Ï†3) - Math.sin(Ï†1) * Math.cos(Ï†3) * Math.cos(Î”Î»13)
       );
       const alongTrackAngle = Math.atan2(
         Math.sin(positionAngle) * Math.cos(positionBearing - routeBearing),
@@ -323,7 +346,7 @@
     const map = L.map('map', { zoomControl: true, attributionControl: true });
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      attribution: 'Tiles &copy; Esri — Sources: Esri, TomTom, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors, and the GIS User Community'
+      attribution: 'Tiles &copy; Esri â€” Sources: Esri, TomTom, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors, and the GIS User Community'
     }).addTo(map);
 
     let mapLayers = [];
@@ -436,11 +459,11 @@
     function bearingBetween(lat1, lon1, lat2, lon2) {
       const toRad = deg => deg * Math.PI / 180;
       const toDeg = rad => rad * 180 / Math.PI;
-      const φ1 = toRad(lat1), φ2 = toRad(lat2);
-      const Δλ = toRad(lon2 - lon1);
-      const y = Math.sin(Δλ) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2)
-        - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      const Ï†1 = toRad(lat1), Ï†2 = toRad(lat2);
+      const Î”Î» = toRad(lon2 - lon1);
+      const y = Math.sin(Î”Î») * Math.cos(Ï†2);
+      const x = Math.cos(Ï†1) * Math.sin(Ï†2)
+        - Math.sin(Ï†1) * Math.cos(Ï†2) * Math.cos(Î”Î»);
       return (toDeg(Math.atan2(y, x)) + 360) % 360;
     }
 
@@ -499,7 +522,7 @@
         : flight.status === 'In air'
           ? ' (estimated position; live ADS-B unavailable)'
           : '';
-      document.getElementById('mapCaption').textContent = `Dad’s flight: ${flight.flight} (${origin.code} → ${dest.code}) — Status: ${flight.status}${trackingNote}.`;
+      document.getElementById('mapCaption').textContent = `Dadâ€™s flight: ${flight.flight} (${origin.code} â†’ ${dest.code}) â€” Status: ${flight.status}${trackingNote}.`;
     }
 
     function updateFlightProgress(progressPct, isLive) {
@@ -519,16 +542,16 @@
       if (!flight) flight = selectedFlight;
       if (!flight) return;
 
-      document.getElementById('modalTitle').textContent = `Dad’s Flight ${flight.flight}`;
+      document.getElementById('modalTitle').textContent = `Dadâ€™s Flight ${flight.flight}`;
       document.getElementById('modalAircraft').textContent = flight.aircraft || 'Delta 737';
       document.getElementById('modalTail').textContent = flight.tail || (flight.ship ? `Ship #${flight.ship}` : 'N8XXDN');
       document.getElementById('modalFlightNum').textContent = flight.flight;
-      document.getElementById('modalRoute').textContent = `${flight.origin.code} (${flight.origin.city}) → ${flight.dest.code} (${flight.dest.city})`;
-      document.getElementById('modalGate').textContent = `Dep: Gate ${flight.dep_gate || '—'} / Arr: Gate ${flight.arr_gate || '—'}`;
+      document.getElementById('modalRoute').textContent = `${flight.origin.code} (${flight.origin.city}) â†’ ${flight.dest.code} (${flight.dest.city})`;
+      document.getElementById('modalGate').textContent = `Dep: Gate ${flight.dep_gate || 'â€”'} / Arr: Gate ${flight.arr_gate || 'â€”'}`;
       document.getElementById('modalStatus').textContent = flight.status || 'On time';
       document.getElementById('modalSched').textContent = `${formatFlightTime(flight.start)} (${formatFlightDate(flight.start)})`;
       document.getElementById('modalEta').textContent = formatFlightTime(flight.end);
-      document.getElementById('modalDuration').textContent = flight.duration ? `${flight.duration} hrs` : '—';
+      document.getElementById('modalDuration').textContent = flight.duration ? `${flight.duration} hrs` : 'â€”';
 
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden', 'false');
@@ -560,10 +583,10 @@
       // Update drawer
       const drawer = document.getElementById('flightDrawer');
       drawer.style.display = 'block';
-      document.getElementById('drawerRoute').textContent = `${flight.origin.code} → ${flight.dest.code}`;
+      document.getElementById('drawerRoute').textContent = `${flight.origin.code} â†’ ${flight.dest.code}`;
       document.getElementById('drawerDuration').textContent = flight.duration ? `Duration: ${flight.duration}` : 'Scheduled';
-      document.getElementById('drawerDepGate').textContent = flight.dep_gate || '—';
-      document.getElementById('drawerArrGate').textContent = flight.arr_gate || '—';
+      document.getElementById('drawerDepGate').textContent = flight.dep_gate || 'â€”';
+      document.getElementById('drawerArrGate').textContent = flight.arr_gate || 'â€”';
       document.getElementById('drawerType').textContent = flight.flight_type || 'Domestic';
       document.getElementById('drawerAircraft').textContent = flight.aircraft || 'Delta Boeing 737';
 
@@ -612,7 +635,7 @@
           ? (data.refresh_warning || 'Showing the last saved schedule because refresh failed.')
           : 'Synchronized with your iCal feed.';
         document.getElementById('footerStatus').textContent =
-          `Last updated: ${updatedDate.toLocaleTimeString()} — ${updateStatus}`;
+          `Last updated: ${updatedDate.toLocaleTimeString()} â€” ${updateStatus}`;
 
         if (!data.flights || data.flights.length === 0) {
           document.getElementById('flightsTableBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:16px;">No flights currently scheduled.</td></tr>';
@@ -658,18 +681,18 @@
       const todayFlights = allFlights.filter(f => f.date_key === todayDateKey);
       const todayLabel = todayFlights.length > 0 
         ? `Today (${todayFlights.length} flight${todayFlights.length === 1 ? '' : 's'})`
-        : `Today — ${todayDisplay}`;
+        : `Today â€” ${todayDisplay}`;
 
       const optToday = document.createElement('option');
       optToday.value = 'today';
-      optToday.textContent = `📅 ${todayLabel}`;
+      optToday.textContent = `ðŸ“… ${todayLabel}`;
       select.appendChild(optToday);
 
       // 2. Next 2 Months view option
       const upcomingFlights = data.upcoming_flights || allFlights.filter(f => f.in_two_month_window);
       const opt2Months = document.createElement('option');
       opt2Months.value = '2months';
-      opt2Months.textContent = `🗓️ Next 2 Months (${windowDisplay}) [${upcomingFlights.length} legs]`;
+      opt2Months.textContent = `ðŸ—“ï¸ Next 2 Months (${windowDisplay}) [${upcomingFlights.length} legs]`;
       select.appendChild(opt2Months);
 
       // 3. Upcoming Dates within 2-month window
@@ -705,7 +728,7 @@
       // 5. All Scheduled Dates option
       const optAll = document.createElement('option');
       optAll.value = 'all';
-      optAll.textContent = `✈️ All Scheduled Dates (${allFlights.length} legs)`;
+      optAll.textContent = `âœˆï¸ All Scheduled Dates (${allFlights.length} legs)`;
       select.appendChild(optAll);
 
       // Default selection is 'today' (or '2months' if today has no flights but next 2 months has flights)
@@ -722,7 +745,7 @@
 
       let filtered = [];
       let dateBadgeText = 'Today';
-      let greetingText = "Here’s the flight schedule and upcoming travel.";
+      let greetingText = "Hereâ€™s the flight schedule and upcoming travel.";
       const windowDisplay = (backendData && backendData.window_display) ? backendData.window_display : 'Next 2 Months';
 
       if (dateKey === 'all') {
@@ -737,13 +760,13 @@
         filtered = allFlights.filter(f => f.date_key === todayDateKey);
         dateBadgeText = 'Today';
         const todayDisplay = backendData ? backendData.today_date_display : 'Today';
-        greetingText = `Dad’s schedule for today (${todayDisplay})`;
+        greetingText = `Dadâ€™s schedule for today (${todayDisplay})`;
       } else {
         filtered = allFlights.filter(f => f.date_key === dateKey);
         const matchDate = (backendData && backendData.available_dates) ? backendData.available_dates.find(d => d.date_key === dateKey) : null;
         const dateDisplay = matchDate ? matchDate.date_display : dateKey;
         dateBadgeText = dateDisplay;
-        greetingText = `Dad’s flights for ${dateDisplay}`;
+        greetingText = `Dadâ€™s flights for ${dateDisplay}`;
       }
 
       document.getElementById('flightsDateBadge').textContent = dateBadgeText;
@@ -763,9 +786,9 @@
         tbody.innerHTML = `
           <tr>
             <td colspan="5" style="text-align:center;padding:28px 16px;color:#555;">
-              <div style="font-size:15.5px;font-weight:600;margin-bottom:6px;color:var(--navy);">✈️ ${msg}</div>
+              <div style="font-size:15.5px;font-weight:600;margin-bottom:6px;color:var(--navy);">âœˆï¸ ${msg}</div>
               <div style="font-size:13px;color:#777;margin-bottom:14px;">Dad is off or on reserve duties. New scheduled flights from iCloud will show up here automatically.</div>
-              <button id="viewScheduleBtn" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);">View All Scheduled Flights →</button>
+              <button id="viewScheduleBtn" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);">View All Scheduled Flights â†’</button>
             </td>
           </tr>
         `;
@@ -802,15 +825,15 @@
         dayKeys.forEach(dk => {
           const legs = byDay[dk];
           const first = legs[0];
-          const routeSummary = legs.map(l => `${l.origin.code}→${l.dest.code}`).join(', ');
+          const routeSummary = legs.map(l => `${l.origin.code}â†’${l.dest.code}`).join(', ');
           const tr = document.createElement('tr');
           tr.setAttribute('tabindex', '0');
           tr.innerHTML = `
             <td><strong>${legs.length} leg${legs.length === 1 ? '' : 's'}</strong></td>
             <td>${routeSummary}</td>
             <td>${first.date_display}</td>
-            <td>—</td>
-            <td class="status">View Day →</td>
+            <td>â€”</td>
+            <td class="status">View Day â†’</td>
           `;
           tr.addEventListener('click', () => {
             document.getElementById('dateSelect').value = dk;
@@ -834,7 +857,7 @@
 
           tr.innerHTML = `
             <td><strong>${f.flight}</strong></td>
-            <td>${f.origin.code} → ${f.dest.code}</td>
+            <td>${f.origin.code} â†’ ${f.dest.code}</td>
             <td>${formatFlightTime(f.start)} <small style="color:#888">${formatFlightDate(f.start)}</small></td>
             <td>${formatFlightTime(f.end)}</td>
             <td class="status">${f.status}</td>
