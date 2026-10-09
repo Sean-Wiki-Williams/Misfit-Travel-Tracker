@@ -147,6 +147,7 @@ def build_flight_entry(
         "start": start_dt.isoformat(),
         "end": end_dt.isoformat(),
         "date_key": start_dt.strftime("%Y-%m-%d"),
+        "end_date_key": end_dt.strftime("%Y-%m-%d"),
         "date_display": start_dt.strftime("%a, %b %d, %Y"),
         "dep_time_formatted": start_dt.strftime("%I:%M %p").lstrip("0"),
         "arr_time_formatted": end_dt.strftime("%I:%M %p").lstrip("0"),
@@ -154,6 +155,11 @@ def build_flight_entry(
         "status": status,
         "layover": layover,
     }
+
+def _flight_date_keys(flight: Dict[str, Any]) -> List[str]:
+    """Dates (YYYY-MM-DD) a flight appears on: departure date and arrival date."""
+    keys = [flight.get("date_key"), flight.get("end_date_key")]
+    return sorted({k for k in keys if k})
 
 #----------------------------------------------------------------------------------------------------------------------------------
 def normalize_ical_url(url: str) -> str:
@@ -355,7 +361,7 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
         if f.get("end"):
             if datetime.fromisoformat(f["end"]) >= now:
                 return True
-        if f.get("date_key") and f["date_key"] >= today_key:
+        if any(k >= today_key for k in _flight_date_keys(f)):
             return True
         return False
 
@@ -427,9 +433,9 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
     today_date = now.date()
     flight_dates = set()
     for f in flights:
-        if f.get("date_key"):
+        for key in _flight_date_keys(f):
             try:
-                flight_dates.add(datetime.strptime(f["date_key"], "%Y-%m-%d").date())
+                flight_dates.add(datetime.strptime(key, "%Y-%m-%d").date())
             except Exception:
                 pass
 
@@ -455,38 +461,34 @@ def parse_calendar_data(raw_ical_bytes: bytes) -> Dict[str, Any]:
     today_date = now.date()
     two_months_date = two_months_later.date()
 
-    for f in flights:
-        if f.get("start"):
-            try:
-                f_date = datetime.fromisoformat(f["start"]).date()
-                f["in_two_month_window"] = (today_date <= f_date <= two_months_date)
-            except Exception:
-                f["in_two_month_window"] = False
-        else:
-            f["in_two_month_window"] = False
+    def _in_window(key: str) -> bool:
+        try:
+            d = datetime.strptime(key, "%Y-%m-%d").date()
+        except Exception:
+            return False
+        return today_date <= d <= two_months_date
 
-    # Dates summary (group by date)
+    for f in flights:
+        f["in_two_month_window"] = any(_in_window(k) for k in _flight_date_keys(f))
+
+    # Dates summary (group by every date a flight departs or lands on)
     dates_summary = {}
     for f in flights:
-        dk = f.get("date_key")
-        if not dk:
-            continue
-        if dk not in dates_summary:
-            try:
-                f_date = datetime.fromisoformat(f["start"]).date() if f.get("start") else None
-                in_win = bool(f_date and (today_date <= f_date <= two_months_date))
-            except Exception:
-                in_win = False
-
-            dates_summary[dk] = {
-                "date_key": dk,
-                "date_display": f.get("date_display"),
-                "flight_count": 0,
-                "routes": [],
-                "in_two_month_window": in_win,
-            }
-        dates_summary[dk]["flight_count"] += 1
-        dates_summary[dk]["routes"].append(f["route"])
+        for dk in _flight_date_keys(f):
+            if dk not in dates_summary:
+                try:
+                    display = datetime.strptime(dk, "%Y-%m-%d").strftime("%a, %b %d, %Y")
+                except Exception:
+                    display = f.get("date_display")
+                dates_summary[dk] = {
+                    "date_key": dk,
+                    "date_display": display,
+                    "flight_count": 0,
+                    "routes": [],
+                    "in_two_month_window": _in_window(dk),
+                }
+            dates_summary[dk]["flight_count"] += 1
+            dates_summary[dk]["routes"].append(f["route"])
 
     all_available_dates = list(dates_summary.values())
     all_available_dates.sort(key=lambda x: x["date_key"])

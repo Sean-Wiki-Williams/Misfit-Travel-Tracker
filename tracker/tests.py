@@ -210,6 +210,37 @@ class UserScheduleTests(TestCase):
         self.assertContains(dashboard, "formatFlightDate(f.end)")
         self.assertContains(dashboard, "formatFlightDate(flight.end)")
 
+    def test_flight_landing_today_is_listed_on_todays_date(self):
+        self.create_user("redeye@example.com")
+        self.save_feed("https://p01-caldav.icloud.com/calendar/redeye")
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = today - timedelta(hours=2)
+        end = today + timedelta(hours=3)
+        feed = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Flight Tracker Tests//EN
+BEGIN:VEVENT
+UID:5555@test
+DTSTAMP:{today.strftime("%Y%m%dT%H%M%SZ")}
+DTSTART:{start.strftime("%Y%m%dT%H%M%SZ")}
+DTEND:{end.strftime("%Y%m%dT%H%M%SZ")}
+SUMMARY:I DL5555 : ATL - LAX
+DESCRIPTION:Eqp/Ship- 739/N12345
+END:VEVENT
+END:VCALENDAR
+""".encode("utf-8")
+        with patch("tracker.views.fetch_ical_content", return_value=feed):
+            data = self.client.get(reverse("flights_api"), {"force": "1"}).json()
+
+        flight = data["flights"][0]
+        self.assertEqual(flight["date_key"], start.strftime("%Y-%m-%d"))
+        self.assertEqual(flight["end_date_key"], today.strftime("%Y-%m-%d"))
+        date_keys = {d["date_key"] for d in data["available_dates"]}
+        self.assertEqual(
+            date_keys,
+            {start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")},
+        )
+
     def test_manual_flights_survive_refresh_and_merge_with_calendar(self):
         user = self.create_user("combined@example.com")
         self.save_feed("https://p01-caldav.icloud.com/calendar/combined")

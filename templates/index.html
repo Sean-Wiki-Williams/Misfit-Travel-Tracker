@@ -311,6 +311,15 @@
       return Number.isNaN(date.getTime()) ? '—' : localFlightDateFormatter.format(date);
     }
 
+    // A flight belongs to the day it departs and the day it lands.
+    function flightDateKeys(flight) {
+      return [...new Set([flight.date_key, flight.end_date_key].filter(Boolean))].sort();
+    }
+
+    function flightOnDate(flight, dateKey) {
+      return flightDateKeys(flight).includes(dateKey);
+    }
+
     function liveRouteProgress(origin, destination, position) {
       const toRad = deg => deg * Math.PI / 180;
       const φ1 = toRad(origin.lat);
@@ -658,7 +667,7 @@
           ? `${TRAVELER} will leave in ${days} day${days === 1 ? '' : 's'}.`
           : `${TRAVELER} will be home in ${days} day${days === 1 ? '' : 's'}.`;
         document.getElementById('countdownSub').textContent = `Trip schedule: ${allFlights.length} flight legs total`;
-        const todayFlights = allFlights.filter(flight => flight.date_key === todayDateKey);
+        const todayFlights = allFlights.filter(flight => flightOnDate(flight, todayDateKey));
         const completedToday = todayFlights.filter(flight => flight.status === 'Completed').length;
         document.getElementById('countdownProgress').textContent =
           countdownMode === 'home' && todayFlights.length
@@ -680,7 +689,7 @@
       const windowDisplay = data.window_display || 'Next 2 Months';
 
       // 1. Today option
-      const todayFlights = allFlights.filter(f => f.date_key === todayDateKey);
+      const todayFlights = allFlights.filter(f => flightOnDate(f, todayDateKey));
       const todayLabel = todayFlights.length > 0 
         ? `Today (${todayFlights.length} flight${todayFlights.length === 1 ? '' : 's'})`
         : `Today — ${todayDisplay}`;
@@ -759,12 +768,12 @@
         dateBadgeText = 'Next 2 Months';
         greetingText = `Viewing flights for the next 2 months (${windowDisplay})`;
       } else if (dateKey === 'today') {
-        filtered = allFlights.filter(f => f.date_key === todayDateKey);
+        filtered = allFlights.filter(f => flightOnDate(f, todayDateKey));
         dateBadgeText = 'Today';
         const todayDisplay = backendData ? backendData.today_date_display : 'Today';
         greetingText = `${TRAVELER}’s schedule for today (${todayDisplay})`;
       } else {
-        filtered = allFlights.filter(f => f.date_key === dateKey);
+        filtered = allFlights.filter(f => flightOnDate(f, dateKey));
         const matchDate = (backendData && backendData.available_dates) ? backendData.available_dates.find(d => d.date_key === dateKey) : null;
         const dateDisplay = matchDate ? matchDate.date_display : dateKey;
         dateBadgeText = dateDisplay;
@@ -819,21 +828,23 @@
         // Group legs by flying day so the "Next 2 Months" view lists one row per day he's flying
         const byDay = {};
         filtered.forEach(f => {
-          if (!byDay[f.date_key]) byDay[f.date_key] = [];
-          byDay[f.date_key].push(f);
+          flightDateKeys(f).forEach(key => {
+            if (!byDay[key]) byDay[key] = [];
+            byDay[key].push(f);
+          });
         });
         const dayKeys = Object.keys(byDay).sort();
 
         dayKeys.forEach(dk => {
           const legs = byDay[dk];
-          const first = legs[0];
+          const dayDisplay = new Date(`${dk}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
           const routeSummary = legs.map(l => `${l.origin.code}→${l.dest.code}`).join(', ');
           const tr = document.createElement('tr');
           tr.setAttribute('tabindex', '0');
           tr.innerHTML = `
             <td><strong>${legs.length} leg${legs.length === 1 ? '' : 's'}</strong></td>
             <td>${routeSummary}</td>
-            <td>${first.date_display}</td>
+            <td>${dayDisplay}</td>
             <td>—</td>
             <td class="status">View Day →</td>
           `;
