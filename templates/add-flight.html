@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ form_title|default:"Add a flight manually" }} — Dad's Flight Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7380688007699870"
+     crossorigin="anonymous"></script>
   <style>
+    :root{--bs-primary:#002b5c;--bs-primary-rgb:0,43,92;--bs-link-color:#002b5c}
     body{margin:0;background:#f2f5f8;color:#1a1a1a;font:16px system-ui,sans-serif}
     main{max-width:720px;margin:6vh auto;padding:28px;background:#fff;border-radius:12px;box-shadow:0 8px 24px #002b5c18}
     h1,h2{color:#002b5c}h1{margin-top:0;font-size:24px}h2{font-size:19px;margin-top:30px}
@@ -29,21 +33,21 @@
     <form method="post">
       {% csrf_token %}
       {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
-      <div class="grid">
+      <div class="grid row g-3">
         {% for field in form %}
-          <div>
+          <div class="col-md-6">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
             {% if field.name == "flight_number" %}
-              <button type="button" id="lookup-flight" data-url="{% url 'lookup_flight' %}">Look up flight</button>
+              <button type="button" id="lookup-flight" class="btn btn-secondary" data-url="{% url 'lookup_flight' %}">Look up flight</button>
               <div id="lookup-message" class="hint" role="status" aria-live="polite"></div>
             {% endif %}
             {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
           </div>
         {% endfor %}
       </div>
-      <button type="submit">{{ submit_label|default:"Save flight" }}</button>
-      <a class="link secondary" href="{% url 'home' %}">Back to schedule</a>
+      <button class="btn btn-primary" type="submit">{{ submit_label|default:"Save flight" }}</button>
+      <a class="link secondary btn btn-secondary" href="{% url 'home' %}">Back to schedule</a>
     </form>
 
     {% if manual_flights %}

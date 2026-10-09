@@ -6,9 +6,10 @@ A Django web app that shows signed-in users their flight schedules by parsing th
 
 1. Users register with an email and password, then add their private calendar feed in Account.
 2. **`tracker`** fetches the user's `.ics` feed, parses it using `flight_parser.py`, and saves the schedule and individual flights.
-3. **`templates/index.html`** renders the signed-in user's schedule, a live map, and a home/leave countdown. Schedule API access requires authentication.
+3. **`templates/index.html`** renders the signed-in user's schedule, a live map, and a home/leave countdown. Bootstrap 5.3.3 styles the site's forms and responsive components via jsDelivr; the dashboard layout and map interactions remain custom. Schedule API access requires authentication.
 4. The iCloud feed is not a simple "one event per flight" calendar — most events are multi-day **rotation reports** (e.g. `SUMMARY: 2904 BDL (0626-1706)`) whose `DESCRIPTION` contains several flight legs grouped under `Rpt- HHMM DDMMM` markers. `parse_rotation_legs()` in `flight_parser.py` extracts each individual leg (flight number, route, times, aircraft) from those blocks. A small number of standalone single-leg events (`SUMMARY: I DL1805 : SAP - ATL`) are also supported for backward compatibility.
 5. Users can also add, edit, and remove flights manually at `/flights/add/`. These are kept separately from imported flights and are not removed by calendar refreshes.
+6. Users can publish a view-only copy of their dashboard from **Share** (`/share/`). Publishing creates an unguessable link that works without signing in; the public page cannot edit anything or reach account pages, and unpublishing or creating a new link revokes the old one. Public viewers can trigger a schedule refresh at most once per minute.
 
 ## Local development
 

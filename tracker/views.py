@@ -1,4 +1,5 @@
 import logging
+import secrets
 import uuid
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -24,7 +25,7 @@ from .forms import (
     ManualFlightForm,
     RegistrationForm,
 )
-from .models import Flight, ScheduleCache
+from .models import Flight, ScheduleCache, User
 from .adsb import AdsbLookupError, fetch_callsign_states, normalize_callsign, states_contain_callsign
 from .opensky import OpenSkyRequestError, fetch_states, parse_bounding_box
 from .services import persist_schedule, schedule_is_fresh
@@ -79,7 +80,11 @@ def home(request):
         user=request.user, is_manual=True
     ).exists():
         return redirect("account")
-    return render(request, "index.html")
+    return render(request, "index.html", {
+        "shared": False,
+        "flights_url": reverse("flights_api"),
+        "opensky_url": reverse("opensky_states"),
+    })
 
 
 @login_required
@@ -207,6 +212,10 @@ def lookup_flight(request):
 @login_required
 @require_GET
 def opensky_states(request):
+    return _opensky_response(request, request.user.pk)
+
+
+def _opensky_response(request, user_id):
     try:
         bounds = parse_bounding_box(request.GET)
         callsign = normalize_callsign(request.GET.get("callsign"))
@@ -224,7 +233,7 @@ def opensky_states(request):
         opensky_error = error
         logger.warning(
             "OpenSky lookup failed for user %s (HTTP %s)",
-            request.user.pk,
+            user_id,
             error.status_code,
         )
 
@@ -232,7 +241,7 @@ def opensky_states(request):
         try:
             fallback = fetch_callsign_states(callsign)
         except AdsbLookupError as error:
-            logger.warning("adsb.lol lookup failed for user %s: %s", request.user.pk, error)
+            logger.warning("adsb.lol lookup failed for user %s: %s", user_id, error)
         else:
             if fallback["states"] or result is None:
                 result = {**fallback, "source": "adsb.lol"}
@@ -278,22 +287,31 @@ def _add_manual_flights(calendar_bytes, manual_flights):
 def flights_api(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "error": "Authentication required."}, status=401)
-    manual_flights = list(Flight.objects.filter(user=request.user, is_manual=True))
-    if not request.user.calendar_url and not manual_flights:
+    force_refresh = request.GET.get("force", "0").lower() in ("1", "true")
+    return _schedule_response(request.user, force_refresh)
+
+
+def _schedule_response(user, force_refresh, public=False):
+    manual_flights = list(Flight.objects.filter(user=user, is_manual=True))
+    if not user.calendar_url and not manual_flights:
+        if public:
+            return JsonResponse({
+                "success": False,
+                "error": "This schedule is not available yet.",
+            }, status=409)
         return JsonResponse({
             "success": False,
             "error": "Add an iCal feed or manually add a flight before loading your schedule.",
             "account_url": reverse("account"),
         }, status=409)
 
-    cached_schedule = ScheduleCache.objects.filter(user=request.user).first()
-    force_refresh = request.GET.get("force", "0").lower() in ("1", "true")
+    cached_schedule = ScheduleCache.objects.filter(user=user).first()
     if not force_refresh and cached_schedule and schedule_is_fresh(cached_schedule):
         return JsonResponse(cached_schedule.payload)
 
     try:
-        if request.user.calendar_url:
-            raw_content = fetch_ical_content(request.user.calendar_url)
+        if user.calendar_url:
+            raw_content = fetch_ical_content(user.calendar_url)
         else:
             raw_content = b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
         raw_content = _add_manual_flights(raw_content, manual_flights)
@@ -301,7 +319,7 @@ def flights_api(request):
     except (requests.RequestException, ValueError, TypeError, UnicodeDecodeError, InvalidCalendar) as error:
         logger.warning(
             "Calendar refresh failed for user %s (%s)",
-            request.user.pk,
+            user.pk,
             type(error).__name__,
         )
         if cached_schedule:
@@ -311,7 +329,11 @@ def flights_api(request):
             return JsonResponse(stale_data)
         return JsonResponse({
             "success": False,
-            "error": "Could not load the calendar feed. Check the feed URL and try again.",
+            "error": (
+                "The schedule is temporarily unavailable."
+                if public
+                else "Could not load the calendar feed. Check the feed URL and try again."
+            ),
         }, status=502)
 
     all_stored_flights = data.pop("_stored_flights", data["flights"])
@@ -322,11 +344,74 @@ def flights_api(request):
     for flight in all_stored_flights:
         flight.pop("_ical_uid", None)
     try:
-        persist_schedule(request.user, data, stored_flights)
+        persist_schedule(user, data, stored_flights)
     except DatabaseError:
-        logger.exception("Could not save schedule for user %s", request.user.pk)
+        logger.exception("Could not save schedule for user %s", user.pk)
         return JsonResponse({
             "success": False,
             "error": "The calendar was loaded but its schedule could not be saved.",
         }, status=500)
     return JsonResponse(data)
+
+
+def _generate_share_token():
+    while True:
+        token = secrets.token_urlsafe(32)
+        if not User.objects.filter(share_token=token).exists():
+            return token
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def share(request):
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action in ("publish", "regenerate"):
+            if action == "regenerate" or not request.user.share_token:
+                request.user.share_token = _generate_share_token()
+                request.user.save(update_fields=["share_token"])
+            messages.success(request, "Your dashboard is published.")
+        elif action == "unpublish":
+            request.user.share_token = None
+            request.user.save(update_fields=["share_token"])
+            messages.success(request, "Your dashboard is no longer public.")
+        return redirect("share")
+    share_url = None
+    if request.user.share_token:
+        share_url = request.build_absolute_uri(
+            reverse("shared_dashboard", args=[request.user.share_token])
+        )
+    return render(request, "share.html", {"share_url": share_url})
+
+
+def _shared_user_or_404(token):
+    return get_object_or_404(User, share_token=token, is_active=True)
+
+
+def _private_response(response):
+    response["Referrer-Policy"] = "no-referrer"
+    response["X-Robots-Tag"] = "noindex, nofollow"
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def shared_dashboard(request, token):
+    _shared_user_or_404(token)
+    return _private_response(render(request, "index.html", {
+        "shared": True,
+        "flights_url": reverse("shared_flights_api", args=[token]),
+        "opensky_url": reverse("shared_opensky_states", args=[token]),
+    }))
+
+
+@require_GET
+def shared_flights_api(request, token):
+    user = _shared_user_or_404(token)
+    return _private_response(_schedule_response(user, force_refresh=False, public=True))
+
+
+@require_GET
+def shared_opensky_states(request, token):
+    user = _shared_user_or_404(token)
+    return _private_response(_opensky_response(request, user.pk))

@@ -27,6 +27,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     calendar_url = models.TextField(blank=True)
+    share_token = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False)
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)

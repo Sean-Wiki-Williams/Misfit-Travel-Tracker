@@ -18,6 +18,11 @@ class RegistrationForm(UserCreationForm):
         model = User
         fields = ("email",)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "form-control"
+
     def clean_email(self):
         return self.cleaned_data["email"].strip().lower()
 
@@ -29,7 +34,9 @@ class EmailAuthenticationForm(AuthenticationForm):
         self.fields["username"].widget = forms.EmailInput(attrs={
             "autocomplete": "email",
             "maxlength": 320,
+            "class": "form-control",
         })
+        self.fields["password"].widget.attrs["class"] = "form-control"
 
     def clean(self):
         email = self.cleaned_data.get("username")
@@ -44,6 +51,7 @@ class CalendarFeedForm(forms.Form):
         widget=forms.URLInput(attrs={
             "autocomplete": "url",
             "placeholder": "webcal://...",
+            "class": "form-control",
         }),
     )
 
@@ -77,6 +85,11 @@ class ManualFlightForm(forms.Form):
     equipment = forms.CharField(max_length=16, required=False, label="Equipment")
     dep_gate = forms.CharField(max_length=8, required=False, label="Departure gate")
     arr_gate = forms.CharField(max_length=8, required=False, label="Arrival gate")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "form-control"
 
     def clean_flight_number(self):
         value = re.sub(r"\s+", "", self.cleaned_data["flight_number"]).upper()

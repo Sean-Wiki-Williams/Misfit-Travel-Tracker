@@ -487,3 +487,76 @@ class UserScheduleTests(TestCase):
         response = self.client.post(reverse("delete_flight", args=[flight.pk]))
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Flight.objects.filter(pk=flight.pk, user=owner).exists())
+
+
+class SharedDashboardTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(email="owner@example.com", password="a-strong-test-password")
+        self.owner.calendar_url = "https://p01-caldav.icloud.com/calendar/owner"
+        self.owner.save()
+        self.client.force_login(self.owner)
+
+    def publish(self):
+        self.client.post(reverse("share"), {"action": "publish"})
+        self.owner.refresh_from_db()
+        return self.owner.share_token
+
+    def test_share_requires_login_and_starts_unpublished(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse("share")).status_code, 302)
+        self.assertEqual(self.client.post(reverse("share"), {"action": "publish"}).status_code, 302)
+        self.owner.refresh_from_db()
+        self.assertIsNone(self.owner.share_token)
+
+    def test_publish_gives_anonymous_read_only_access(self):
+        token = self.publish()
+        self.assertTrue(token)
+        self.assertContains(self.client.get(reverse("share")), token)
+
+        feed = calendar_with_flight("4444", "ATL", "LAX")
+        anonymous = Client()
+        with patch("tracker.views.fetch_ical_content", return_value=feed):
+            page = anonymous.get(reverse("shared_dashboard", args=[token]))
+            api = anonymous.get(reverse("shared_flights_api", args=[token]))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, reverse("add_flight"))
+        self.assertNotContains(page, reverse("account"))
+        self.assertEqual(page["Referrer-Policy"], "no-referrer")
+        self.assertEqual(api.status_code, 200)
+        self.assertEqual(api.json()["flights"][0]["route"], "ATL → LAX")
+        self.assertNotIn(self.owner.email, api.content.decode())
+
+        for name in ("shared_dashboard", "shared_flights_api"):
+            response = anonymous.post(reverse(name, args=[token]))
+            self.assertEqual(response.status_code, 405)
+
+    def test_shared_api_never_forces_a_refresh(self):
+        token = self.publish()
+        feed = calendar_with_flight("5555", "ATL", "LAX")
+        with patch("tracker.views.fetch_ical_content", return_value=feed) as fetch:
+            Client().get(reverse("shared_flights_api", args=[token]) + "?force=1")
+            Client().get(reverse("shared_flights_api", args=[token]) + "?force=1")
+        self.assertEqual(fetch.call_count, 1)
+
+    def test_unpublish_and_regenerate_revoke_old_link(self):
+        old_token = self.publish()
+        self.client.post(reverse("share"), {"action": "regenerate"})
+        self.owner.refresh_from_db()
+        self.assertNotEqual(old_token, self.owner.share_token)
+        self.assertEqual(Client().get(reverse("shared_dashboard", args=[old_token])).status_code, 404)
+
+        new_token = self.owner.share_token
+        self.client.post(reverse("share"), {"action": "unpublish"})
+        self.owner.refresh_from_db()
+        self.assertIsNone(self.owner.share_token)
+        for name in ("shared_dashboard", "shared_flights_api", "shared_opensky_states"):
+            self.assertEqual(Client().get(reverse(name, args=[new_token])).status_code, 404)
+
+    def test_unknown_token_is_not_found(self):
+        self.assertEqual(Client().get(reverse("shared_dashboard", args=["nope"])).status_code, 404)
+
+    def test_private_dashboard_still_requires_login(self):
+        self.publish()
+        anonymous = Client()
+        self.assertEqual(anonymous.get(reverse("home")).status_code, 302)
+        self.assertEqual(anonymous.get(reverse("flights_api")).status_code, 401)
