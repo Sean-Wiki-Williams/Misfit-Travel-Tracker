@@ -46,6 +46,12 @@ class EmailAuthenticationForm(AuthenticationForm):
 
 
 class CalendarFeedForm(forms.Form):
+    traveler_name = forms.CharField(
+        max_length=40,
+        required=False,
+        label="Name shown on the dashboard",
+        widget=forms.TextInput(attrs={"placeholder": "Dad", "class": "form-control"}),
+    )
     calendar_url = forms.CharField(
         max_length=4096,
         widget=forms.URLInput(attrs={

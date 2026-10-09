@@ -55,6 +55,7 @@
           <div>
             <strong>{{ flight.flight_number }} · {{ flight.origin_code }} → {{ flight.dest_code }}</strong>
             <div class="hint">Departs <time class="local-time" datetime="{{ flight.start_time|date:'c' }}">{{ flight.start_time|date:"M j, Y H:i" }}</time></div>
+            <div class="hint">Arrives <time class="local-time" datetime="{{ flight.end_time|date:'c' }}">{{ flight.end_time|date:"M j, Y H:i" }}</time></div>
           </div>
           <div class="flight-actions">
             <a class="link" href="{% url 'edit_flight' flight.id %}">Edit</a>

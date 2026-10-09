@@ -27,6 +27,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     calendar_url = models.TextField(blank=True)
+    traveler_name = models.CharField(max_length=40, blank=True)
     share_token = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False)
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -40,7 +41,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
-
+    @property
+    def display_name(self):
+        return self.traveler_name.strip() or "Dad"
 class Flight(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="flights")
     flight_key = models.CharField(max_length=64)

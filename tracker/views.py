@@ -68,12 +68,16 @@ def account(request):
         form = CalendarFeedForm(request.POST)
         if form.is_valid():
             request.user.calendar_url = form.cleaned_data["calendar_url"]
-            request.user.save(update_fields=["calendar_url"])
+            request.user.traveler_name = form.cleaned_data["traveler_name"]
+            request.user.save(update_fields=["calendar_url", "traveler_name"])
             ScheduleCache.objects.filter(user=request.user).delete()
-            messages.success(request, "Calendar feed saved.")
+            messages.success(request, "Account settings saved.")
             return redirect("home")
     else:
-        form = CalendarFeedForm(initial={"calendar_url": request.user.calendar_url})
+        form = CalendarFeedForm(initial={
+            "calendar_url": request.user.calendar_url,
+            "traveler_name": request.user.traveler_name,
+        })
     return render(request, "account.html", {"form": form})
 
 
@@ -86,6 +90,7 @@ def home(request):
         return redirect("account")
     return render(request, "index.html", {
         "shared": False,
+        "traveler_name": request.user.display_name,
         "flights_url": reverse("flights_api"),
         "opensky_url": reverse("opensky_states"),
     })
@@ -401,9 +406,10 @@ def _private_response(response):
 
 @require_GET
 def shared_dashboard(request, token):
-    _shared_user_or_404(token)
+    shared_user = _shared_user_or_404(token)
     return _private_response(render(request, "index.html", {
         "shared": True,
+        "traveler_name": shared_user.display_name,
         "flights_url": reverse("shared_flights_api", args=[token]),
         "opensky_url": reverse("shared_opensky_states", args=[token]),
     }))

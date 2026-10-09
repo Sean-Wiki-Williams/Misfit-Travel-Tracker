@@ -187,6 +187,29 @@ class UserScheduleTests(TestCase):
         self.assertEqual(saved["arr_gate"], "B4")
         self.assertNotIn("_ical_uid", saved)
 
+    def test_manual_flight_can_arrive_the_day_after_departure(self):
+        user = self.create_user("overnight@example.com")
+        data = self.manual_flight_data()
+        departure_date = datetime.fromisoformat(data["departure_date"]).date()
+        arrival_date = departure_date + timedelta(days=1)
+        data["arrival_date"] = arrival_date.isoformat()
+
+        response = self.client.post(reverse("add_flight"), data)
+        self.assertRedirects(response, reverse("home"))
+
+        flight = Flight.objects.get(user=user, is_manual=True)
+        self.assertEqual(
+            flight.start_time.astimezone(ZoneInfo("America/New_York")).date(),
+            departure_date,
+        )
+        self.assertEqual(
+            flight.end_time.astimezone(ZoneInfo("America/Los_Angeles")).date(),
+            arrival_date,
+        )
+        dashboard = self.client.get(reverse("home"))
+        self.assertContains(dashboard, "formatFlightDate(f.end)")
+        self.assertContains(dashboard, "formatFlightDate(flight.end)")
+
     def test_manual_flights_survive_refresh_and_merge_with_calendar(self):
         user = self.create_user("combined@example.com")
         self.save_feed("https://p01-caldav.icloud.com/calendar/combined")
@@ -567,3 +590,33 @@ class AboutPageTests(TestCase):
         response = self.client.get(reverse('about'))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'adsbygoogle.js')
+
+class TravelerNameTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="n@example.com", password="pw-12345-abc")
+        self.user.calendar_url = "https://p01-caldav.icloud.com/x.ics"
+        self.user.save()
+
+    def test_default_name_is_dad(self):
+        self.assertEqual(self.user.display_name, "Dad")
+
+    def test_account_saves_name_and_shared_page_uses_it(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("account"), {
+            "calendar_url": "https://p01-caldav.icloud.com/x.ics",
+            "traveler_name": "Grandpa Joe",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.traveler_name, "Grandpa Joe")
+        self.user.share_token = "tok123"
+        self.user.save()
+        self.client.logout()
+        self.assertContains(self.client.get(reverse("shared_dashboard", args=["tok123"])), "Grandpa Joe’s Travel Tracker")
+
+    def test_name_is_escaped(self):
+        self.user.traveler_name = "<b>x</b>"
+        self.user.share_token = "tok456"
+        self.user.save()
+        body = self.client.get(reverse("shared_dashboard", args=["tok456"])).content.decode()
+        self.assertNotIn("<b>x</b>", body)

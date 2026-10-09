@@ -165,7 +165,7 @@
   <div class="container">
     <header>
       <div class="header-left">
-        <div class="title">Dad’s Travel Tracker</div>
+        <div class="title">{{ traveler_name }}’s Travel Tracker</div>
         <div class="underline" aria-hidden="true"></div>
         <div class="greet" id="headerGreeting">Here’s the flight schedule and upcoming travel.</div>
       </div>
@@ -201,7 +201,7 @@
         <div class="card" id="flightsCard" aria-labelledby="flightsTitle">
           <div class="accent" aria-hidden="true"></div>
           <div id="flightsTitle" class="panel-title">
-            <span>Dad’s Flights</span>
+            <span>{{ traveler_name }}’s Flights</span>
             <span class="date-badge" id="flightsDateBadge">Today</span>
           </div>
           <div class="table-responsive">
@@ -252,7 +252,7 @@
       </section>
 
       <aside class="map-card" aria-label="Map and aircraft">
-        <div class="map-canvas" role="img" aria-label="Map showing {{ traveler_name }}?s route">
+        <div class="map-canvas" role="img" aria-label="Map showing {{ traveler_name }}’s route">
           <div id="map"></div>
         </div>
         <div class="map-caption">
@@ -261,14 +261,14 @@
       </aside>
     </main>
 
-    <footer id="footerStatus">Last updated: checking calendar... — All times local to Dad’s current location.</footer>
+    <footer id="footerStatus">Last updated: checking calendar... — All times local to {{ traveler_name }}’s current location.</footer>
   </div>
 
   <!-- Modal -->
   <div class="plane-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="plane-modal" role="document" aria-labelledby="modalTitle">
       <div class="close" id="modalClose" aria-label="Close" style="position:absolute;right:12px;top:12px;width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">✕</div>
-      <h3 id="modalTitle" style="margin:0 0 8px 0;color:var(--navy)">Dad’s Plane Today</h3>
+      <h3 id="modalTitle" style="margin:0 0 8px 0;color:var(--navy)">{{ traveler_name }}’s Plane Today</h3>
       <div style="margin-bottom:8px;color:#666" id="modalAircraft">Delta 73N — Boeing 737‑900ER</div>
 
       <div style="display:flex;flex-direction:column;gap:8px">
@@ -290,6 +290,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
   <script>
+    const TRAVELER = '{{ traveler_name|escapejs }}';
+    const TRAVELER_HTML = '{{ traveler_name|force_escape|escapejs }}';
     const localFlightTimeFormatter = new Intl.DateTimeFormat(undefined, {
       hour: 'numeric',
       minute: '2-digit'
@@ -522,7 +524,7 @@
         : flight.status === 'In air'
           ? ' (estimated position; live ADS-B unavailable)'
           : '';
-      document.getElementById('mapCaption').textContent = `Dad’s flight: ${flight.flight} (${origin.code} → ${dest.code}) — Status: ${flight.status}${trackingNote}.`;
+      document.getElementById('mapCaption').textContent = `${TRAVELER}’s flight: ${flight.flight} (${origin.code} → ${dest.code}) — Status: ${flight.status}${trackingNote}.`;
     }
 
     function updateFlightProgress(progressPct, isLive) {
@@ -542,7 +544,7 @@
       if (!flight) flight = selectedFlight;
       if (!flight) return;
 
-      document.getElementById('modalTitle').textContent = `Dad’s Flight ${flight.flight}`;
+      document.getElementById('modalTitle').textContent = `${TRAVELER}’s Flight ${flight.flight}`;
       document.getElementById('modalAircraft').textContent = flight.aircraft || 'Delta 737';
       document.getElementById('modalTail').textContent = flight.tail || (flight.ship ? `Ship #${flight.ship}` : 'N8XXDN');
       document.getElementById('modalFlightNum').textContent = flight.flight;
@@ -550,7 +552,7 @@
       document.getElementById('modalGate').textContent = `Dep: Gate ${flight.dep_gate || '—'} / Arr: Gate ${flight.arr_gate || '—'}`;
       document.getElementById('modalStatus').textContent = flight.status || 'On time';
       document.getElementById('modalSched').textContent = `${formatFlightTime(flight.start)} (${formatFlightDate(flight.start)})`;
-      document.getElementById('modalEta').textContent = formatFlightTime(flight.end);
+      document.getElementById('modalEta').textContent = `${formatFlightTime(flight.end)} (${formatFlightDate(flight.end)})`;
       document.getElementById('modalDuration').textContent = flight.duration ? `${flight.duration} hrs` : '—';
 
       modal.style.display = 'flex';
@@ -760,13 +762,13 @@
         filtered = allFlights.filter(f => f.date_key === todayDateKey);
         dateBadgeText = 'Today';
         const todayDisplay = backendData ? backendData.today_date_display : 'Today';
-        greetingText = `Dad’s schedule for today (${todayDisplay})`;
+        greetingText = `${TRAVELER}’s schedule for today (${todayDisplay})`;
       } else {
         filtered = allFlights.filter(f => f.date_key === dateKey);
         const matchDate = (backendData && backendData.available_dates) ? backendData.available_dates.find(d => d.date_key === dateKey) : null;
         const dateDisplay = matchDate ? matchDate.date_display : dateKey;
         dateBadgeText = dateDisplay;
-        greetingText = `Dad’s flights for ${dateDisplay}`;
+        greetingText = `${TRAVELER}’s flights for ${dateDisplay}`;
       }
 
       document.getElementById('flightsDateBadge').textContent = dateBadgeText;
@@ -859,7 +861,7 @@
             <td><strong>${f.flight}</strong></td>
             <td>${f.origin.code} → ${f.dest.code}</td>
             <td>${formatFlightTime(f.start)} <small style="color:#888">${formatFlightDate(f.start)}</small></td>
-            <td>${formatFlightTime(f.end)}</td>
+            <td>${formatFlightTime(f.end)} <small style="color:#888">${formatFlightDate(f.end)}</small></td>
             <td class="status">${f.status}</td>
           `;
 
